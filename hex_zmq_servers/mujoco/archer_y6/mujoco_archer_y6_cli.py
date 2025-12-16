@@ -55,11 +55,11 @@ class HexMujocoArcherY6Client(HexMujocoClientBase):
                 if self.__recv_config["rgb"]:
                     hdr, img = self._get_rgb_inner()
                     if hdr is not None:
-                        self._rgb_queue.append((hdr, img))
+                        self._camera_queue["rgb"].append((hdr, img))
                 if self.__recv_config["depth"]:
                     hdr, img = self._get_depth_inner()
                     if hdr is not None:
-                        self._depth_queue.append((hdr, img))
+                        self._camera_queue["depth"].append((hdr, img))
 
             try:
                 cmds = self._cmds_queue[-1]
