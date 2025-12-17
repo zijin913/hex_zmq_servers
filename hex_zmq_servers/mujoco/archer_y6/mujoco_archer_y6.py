@@ -54,6 +54,7 @@ class HexMujocoArcherY6(HexMujocoBase):
         HexMujocoBase.__init__(self, realtime_mode)
 
         try:
+            self.__sim_rate = int(mujoco_config["control_hz"])
             states_rate = mujoco_config["states_rate"]
             img_rate = mujoco_config["img_rate"]
             self.__tau_ctrl = mujoco_config["tau_ctrl"]
@@ -71,7 +72,8 @@ class HexMujocoArcherY6(HexMujocoBase):
         model_path = os.path.join(os.path.dirname(__file__), "model/scene.xml")
         self.__model = mujoco.MjModel.from_xml_path(model_path)
         self.__data = mujoco.MjData(self.__model)
-        self.__sim_rate = int(1.0 / self.__model.opt.timestep)
+        self.__model.opt.timestep = 1.0 / self.__sim_rate
+        mujoco.mj_resetData(self.__model, self.__data)
 
         # state init
         self.__state_robot_idx = [0, 1, 2, 3, 4, 5, 6]
@@ -106,7 +108,7 @@ class HexMujocoArcherY6(HexMujocoBase):
 
         # camera init
         self.__img_trig_thresh = int(self.__sim_rate / img_rate)
-        self.__width, self.__height = 640, 400
+        self.__width, self.__height = (224, 224)
         fovy_rad = self.__model.cam_fovy[0] * np.pi / 180.0
         focal = 0.5 * self.__height / np.tan(fovy_rad / 2.0)
         self._intri = np.array(
@@ -179,13 +181,11 @@ class HexMujocoArcherY6(HexMujocoBase):
                 if states_robot is not None:
                     if hex_zmq_ts_delta_ms(ts, last_states_ts) > 1e-6:
                         last_states_ts = ts
-
                         # states robot
                         states_robot_queue.append(
                             (ts, states_robot_count, states_robot))
                         states_robot_count = (states_robot_count +
                                               1) % self._max_seq_num
-
                         # states obj
                         states_obj_queue.append(
                             (ts, states_obj_count, states_obj))

@@ -39,10 +39,12 @@ NODE_PARAMS_DICT = {
                 "port": 12345,
             },
             "params": {
+                "control_hz": 500,
                 "mit_kp":
                 [1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0],
                 "mit_kd": [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
-                "cam_type": ["realsense", "realsense", "realsense"],
+                "cam_type": ["realsense", "empty", "empty"],
+                "headless": True,
             },
         },
     },

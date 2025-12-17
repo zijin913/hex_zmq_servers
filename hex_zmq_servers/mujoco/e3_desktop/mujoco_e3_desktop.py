@@ -55,6 +55,7 @@ class HexMujocoE3Desktop(HexMujocoBase):
         HexMujocoBase.__init__(self, realtime_mode)
 
         try:
+            self.__sim_rate = int(mujoco_config["control_hz"])
             states_rate = mujoco_config["states_rate"]
             img_rate = mujoco_config["img_rate"]
             self.__tau_ctrl = mujoco_config["tau_ctrl"]
@@ -72,7 +73,8 @@ class HexMujocoE3Desktop(HexMujocoBase):
         model_path = os.path.join(os.path.dirname(__file__), "model/scene.xml")
         self.__model = mujoco.MjModel.from_xml_path(model_path)
         self.__data = mujoco.MjData(self.__model)
-        self.__sim_rate = int(1.0 / self.__model.opt.timestep)
+        self.__model.opt.timestep = 1.0 / self.__sim_rate
+        mujoco.mj_resetData(self.__model, self.__data)
 
         # state init
         self.__state_left_idx = [0, 1, 2, 3, 4, 5, 6]
@@ -115,7 +117,7 @@ class HexMujocoE3Desktop(HexMujocoBase):
 
         # camera init
         self.__img_trig_thresh = int(self.__sim_rate / img_rate)
-        self.__width, self.__height = (640, 480)
+        self.__width, self.__height = (224, 224)
         head_fovy_rad = self.__model.cam_fovy[0] * np.pi / 180.0
         left_fovy_rad = self.__model.cam_fovy[1] * np.pi / 180.0
         right_fovy_rad = self.__model.cam_fovy[2] * np.pi / 180.0

@@ -6,9 +6,10 @@
 # Date  : 2025-09-25
 ################################################################
 
-import argparse, json, time
+import argparse, json
 from hex_zmq_servers import (
     HexRate,
+    hex_ns_now,
     hex_zmq_ts_now,
     hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,

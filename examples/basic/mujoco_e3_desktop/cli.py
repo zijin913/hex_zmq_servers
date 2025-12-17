@@ -54,7 +54,7 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
 
     # get states, rgb and depth, and set cmds
-    rate = HexRate(250)
+    rate = HexRate(2e3)
     try:
         while True:
             left_states_hdr, left_states = client.get_states("left")
