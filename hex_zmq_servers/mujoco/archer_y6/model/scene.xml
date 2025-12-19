@@ -19,6 +19,10 @@
         <include file="assets/assets.xml"/>
     </asset>
 
+    <default>
+        <include file="joint_class.xml"/>
+    </default>
+
     <worldbody>
         <light pos="0.0 0.0 1.5" directional="true"/>
         <geom name="floor" size="0.0 0.0 0.05" type="plane" material="groundplane"/>

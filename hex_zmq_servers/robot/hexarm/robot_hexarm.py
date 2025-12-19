@@ -33,7 +33,8 @@ ROBOT_CONFIG = {
 }
 
 HEX_DEVICE_TYPE_DICT = {
-    "archer_y6": 16,
+    "archer_y6": 25,
+    "archer_d6y": 16,
     "archer_l6y": 17,
 }
 

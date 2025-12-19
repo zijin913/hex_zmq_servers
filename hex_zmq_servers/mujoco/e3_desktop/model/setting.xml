@@ -54,19 +54,19 @@
         <motor joint="left_joint_1" ctrlrange="-28 28" forcerange="-28 28"/>
         <motor joint="left_joint_2" ctrlrange="-28 28" forcerange="-28 28"/>
         <motor joint="left_joint_3" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="left_joint_4" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="left_joint_5" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="left_joint_6" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="left_gripper_left_joint_1" ctrlrange="-10 10" forcerange="-10 10"/>
+        <motor joint="left_joint_4" ctrlrange="-28 28" forcerange="-28 28"/>
+        <motor joint="left_joint_5" ctrlrange="-8 8" forcerange="-8 8"/>
+        <motor joint="left_joint_6" ctrlrange="-8 8" forcerange="-8 8"/>
+        <motor joint="left_gripper_left_joint_1" ctrlrange="-8 8" forcerange="-8 8"/>
 
         # right arm
         <motor joint="right_joint_1" ctrlrange="-28 28" forcerange="-28 28"/>
         <motor joint="right_joint_2" ctrlrange="-28 28" forcerange="-28 28"/>
         <motor joint="right_joint_3" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="right_joint_4" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="right_joint_5" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="right_joint_6" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="right_gripper_left_joint_1" ctrlrange="-10 10" forcerange="-10 10"/>
+        <motor joint="right_joint_4" ctrlrange="-28 28" forcerange="-28 28"/>
+        <motor joint="right_joint_5" ctrlrange="-8 8" forcerange="-8 8"/>
+        <motor joint="right_joint_6" ctrlrange="-8 8" forcerange="-8 8"/>
+        <motor joint="right_gripper_left_joint_1" ctrlrange="-8 8" forcerange="-8 8"/>
     </actuator>
 
 </mujocoinclude>
