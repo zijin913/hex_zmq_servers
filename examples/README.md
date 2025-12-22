@@ -29,6 +29,7 @@ examples/
     ├── multi_berxel/                # Multi Berxel example
     ├── multi_realsense/             # Multi Realsense example
     ├── multi_launch/                # Multi launch example
+    ├── multi_launch_mujoco/         # Multi launch Mujoco example
     ├── multi_launch_force_feedback/ # Multi launch Force feedback example
     ├── multi_launch_berxel/         # Multi launch Berxel example
     └── multi_launch_realsense/      # Multi launch Realsense example
@@ -104,6 +105,9 @@ examples/
 - **multi_launch**
   - Description: Multi launch example, showing how to use multiple launch files.
   - [Details](adv/multi_launch/README.md)
+- **multi_launch_mujoco**
+  - Description: Multi launch Mujoco example, showing how to use multiple launch files to start multiple Mujoco simulation.
+  - [Details](adv/multi_launch_mujoco/README.md)
 - **multi_launch_force_feedback**
   - Description: Multi launch Force feedback example, showing how to use multiple launch files to start multiple Force feedback devices.
   - [Details](adv/multi_launch_force_feedback/README.md)
