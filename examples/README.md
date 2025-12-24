@@ -31,6 +31,7 @@ examples/
     ├── multi_launch/                # Multi launch example
     ├── multi_launch_mujoco/         # Multi launch Mujoco example
     ├── multi_launch_force_feedback/ # Multi launch Force feedback example
+    ├── multi_launch_zero_gravity/   # Multi launch Zero gravity example
     ├── multi_launch_berxel/         # Multi launch Berxel example
     └── multi_launch_realsense/      # Multi launch Realsense example
 ```
@@ -111,6 +112,9 @@ examples/
 - **multi_launch_force_feedback**
   - Description: Multi launch Force feedback example, showing how to use multiple launch files to start multiple Force feedback devices.
   - [Details](adv/multi_launch_force_feedback/README.md)
+- **multi_launch_zero_gravity**
+  - Description: Multi launch Zero gravity example, showing how to use multiple launch files to start multiple HexArm robots in zero gravity mode.
+  - [Details](adv/multi_launch_zero_gravity/README.md)
 - **multi_launch_berxel**
   - Description: Multi launch Berxel example, showing how to use multiple launch files to start multiple Berxel RGB-D camera devices.
   - [Details](adv/multi_launch_berxel/README.md)
