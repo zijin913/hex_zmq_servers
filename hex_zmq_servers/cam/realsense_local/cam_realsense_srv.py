@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 import numpy as np
 from hex_zmq_servers.cam.cam_base import HexCamServerBase
-from hex_zmq_servers.cam.realsense.cam_realsense import HexCamRealsense, CAMERA_CONFIG
+from hex_zmq_servers.cam.realsense_local.cam_realsense import HexCamRealsense, CAMERA_CONFIG
 
 NET_CONFIG = {
     "ip": "127.0.0.1",

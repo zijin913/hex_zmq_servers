@@ -20,8 +20,9 @@ from ...hex_launch import hex_log, HEX_LOG_LEVEL
 import pyrealsense2 as rs
 
 CAMERA_CONFIG = {
-    "serial_number": '243422073194',
+    "serial_number": None,  # None = use first available device
     "resolution": [640, 480],
+    "depth_resolution": None,  # None = same as resolution
     "frame_rate": 30,
     "sens_ts": True,
 }
@@ -37,10 +38,11 @@ class HexCamRealsense(HexCamBase):
         HexCamBase.__init__(self, realtime_mode)
 
         try:
-            self.__serial_number = camera_config["serial_number"]
+            self.__serial_number = camera_config.get("serial_number", None)
             self.__resolution = camera_config["resolution"]
+            self.__depth_resolution = camera_config.get("depth_resolution", None) or self.__resolution
             self.__frame_rate = camera_config["frame_rate"]
-            self.__sens_ts = camera_config["sens_ts"]
+            self.__sens_ts = camera_config.get("sens_ts", True)
         except KeyError as ke:
             missing_key = ke.args[0]
             raise ValueError(
@@ -49,13 +51,18 @@ class HexCamRealsense(HexCamBase):
         # variables
         # realsense variables
         ctx = rs.context()
-        serial_numbers = []
+        available_devices = []
         for dev in ctx.query_devices():
             serial = dev.get_info(rs.camera_info.serial_number)
             name = dev.get_info(rs.camera_info.name)
             print(f"  - Device: {name}, Serial: {serial}")
-            serial_numbers.append(serial)
-        if self.__serial_number not in serial_numbers:
+            available_devices.append(serial)
+
+        # If no serial specified, use first available device
+        if not self.__serial_number and available_devices:
+            self.__serial_number = available_devices[0]
+            print(f"  Using first available device: {self.__serial_number}")
+        elif self.__serial_number not in available_devices:
             print(
                 f"can not find device with serial number: {self.__serial_number}"
             )
@@ -77,8 +84,8 @@ class HexCamRealsense(HexCamBase):
         )
         config.enable_stream(
             rs.stream.depth,
-            self.__resolution[0],
-            self.__resolution[1],
+            self.__depth_resolution[0],
+            self.__depth_resolution[1],
             rs.format.z16,
             self.__frame_rate,
         )
