@@ -36,6 +36,7 @@ HEX_DEVICE_TYPE_DICT = {
     "archer_y6": 25,
     "archer_d6y": 16,
     "archer_l6y": 17,
+    "firefly_y6": 27,
 }
 
 
