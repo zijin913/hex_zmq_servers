@@ -14,7 +14,7 @@ from hex_zmq_servers import (
     hex_log,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import part2trans, trans2part
+from hex_robo_utils import part2trans, trans2part, euler2rot, rot2quat
 from hex_robo_utils import HexDynUtil as DynUtil
 
 INIT_JOINT = np.array(
@@ -22,7 +22,7 @@ INIT_JOINT = np.array(
     dtype=np.float64,
 )
 END_POSE = np.array(
-    [0.0, 0.0, 0.187, 0.7071068, 0.0, -0.7071068, 0.0],
+    [0.0, 0.0, 0.083, 0.7071068, 0.0, -0.7071068, 0.0],
     dtype=np.float64,
 )
 
@@ -76,11 +76,13 @@ def interp_arm(cur_q,
 
 def create_traj_joint_arr(
     traj_center,
-    traj_radius,
+    traj_angle,
     traj_period,
     hz,
     dyn_util: DynUtil,
 ):
+    traj_radius = np.sin(traj_angle)
+    traj_distance = np.cos(traj_angle)
     center_pos = traj_center[:3]
     center_quat = traj_center[3:]
     trans_center_in_base = part2trans(center_pos, center_quat)
@@ -90,13 +92,12 @@ def create_traj_joint_arr(
     circle_num = int(traj_period * hz)
     for i in range(circle_num):
         theta = 2 * np.pi * i / circle_num
+        pitch = np.arctan2(-traj_radius * np.cos(theta), traj_distance)
+        yaw = np.arctan2(traj_radius * np.sin(theta), traj_distance)
+        rot = euler2rot(np.array([0, pitch, yaw]), format='xyz')
         trans_pt_in_center = part2trans(
-            np.array([
-                0.0,
-                traj_radius * np.sin(theta),
-                traj_radius * np.cos(theta),
-            ]),
-            np.array([1.0, 0.0, 0.0, 0.0]),
+            np.zeros(3),
+            rot2quat(rot),
         )
         trans_pt_in_base = trans_center_in_base @ trans_pt_in_center
         circle_pos, circle_quat = trans2part(trans_pt_in_base)
@@ -121,7 +122,7 @@ def create_traj_joint_arr(
         before_q = traj_q_arr[(i - 1) % circle_num]
         after_q = traj_q_arr[(i + 1) % circle_num]
         traj_dq_arr[i] = 0.5 * (after_q - before_q) * hz
-    return traj_q_arr, traj_dq_arr, circle_num
+    return traj_q_arr, traj_q_arr, circle_num
 
 
 def main():
@@ -153,7 +154,7 @@ def main():
     print("create_traj_joint_arr")
     traj_q_arr, traj_dq_arr, traj_num = create_traj_joint_arr(
         np.array(traj_cfg["traj_center"]),
-        traj_cfg["traj_radius"],
+        traj_cfg["traj_angle"],
         traj_cfg["traj_period"],
         1000,
         dyn_util,
@@ -168,13 +169,19 @@ def main():
 
     traj_idx = 0
     rate = HexRate(1000)
-    while True:
+    pos_list = []
+    for _ in range(5 * traj_num):
+        # while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
             cur_q = states[:, 0]
             cur_dq = states[:, 1]
             arm_q = cur_q[:-1] if use_gripper else cur_q
             arm_dq = cur_dq[:-1] if use_gripper else cur_dq
+
+            pos, _ = dyn_util.forward_kinematics(arm_q)[-1]
+            pos_list.append(pos.copy())
+
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
             tau_comp = c_mat @ arm_dq + g_vec
 
@@ -202,6 +209,10 @@ def main():
 
         traj_idx = (traj_idx + 1) % traj_num
         rate.sleep()
+
+    pos_list = np.array(pos_list)
+    print(f"pos_list: {pos_list.shape}")
+    np.save("pos_list.npy", pos_list)
 
 
 if __name__ == '__main__':

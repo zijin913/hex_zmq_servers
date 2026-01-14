@@ -30,12 +30,12 @@ MIT_KP = [400.0, 400.0, 500.0, 200.0, 100.0, 100.0]
 MIT_KD = [5.0, 5.0, 5.0, 5.0, 2.0, 2.0]
 NODE_PARAMS_DICT = {
     # cli
-    "traj_axis_cli": {
-        "name": "traj_axis_cli",
+    "traj_point_cli": {
+        "name": "traj_point_cli",
         "node_path":
-        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_axis/cli.py",
+        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_point/cli.py",
         "cfg_path":
-        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_axis/cli.json",
+        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_point/cli.json",
         "cfg": {
             "model_path": HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
             "use_gripper": USE_GRIPPER,

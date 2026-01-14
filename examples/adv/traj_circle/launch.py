@@ -20,7 +20,7 @@ else:
     USE_GRIPPER = True
 
 # device config
-DEVICE_IP = "172.18.22.245"
+DEVICE_IP = "172.18.5.116"
 HEXARM_DEVICE_PORT = 8439
 
 # node params

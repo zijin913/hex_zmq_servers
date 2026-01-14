@@ -4,16 +4,16 @@
     "use_gripper": false,
     "traj_cfg": {
         "traj_center": [
-            0.45,
+            0.25,
             0.0,
-            0.4,
+            0.35,
             1.0,
             0.0,
             0.0,
             0.0
         ],
         "traj_angle": 0.5,
-        "traj_period": 8.0
+        "traj_period": 16.0
     },
     "ctrl_cfg": {
         "mit_kp": [
