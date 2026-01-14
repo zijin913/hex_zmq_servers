@@ -23,34 +23,35 @@ LAUNCH_PATH_DICT = {
 }
 
 # device config
+FRAME_RATE = 30
 ## P100
 # cam 0
 CAM_0_PORT = 12345
 CAM_0_SERIAL_NUMBER = "P100RYB4C03M2B322"
 CAM_0_EXPOSURE = 10000
 CAM_0_SENS_TS = True
-# ## P008
-# # cam 1
-# CAM_1_PORT = 12346
-# CAM_1_SERIAL_NUMBER = "P008GYX5728E1B010"
-# CAM_1_EXPOSURE = 10000
-# CAM_1_SENS_TS = True
-# # cam 2
-# CAM_2_PORT = 12347
-# CAM_2_SERIAL_NUMBER = "P008GYX5728E1B011"
-# CAM_2_EXPOSURE = 10000
-# CAM_2_SENS_TS = True
-## P050
+## P008
 # cam 1
 CAM_1_PORT = 12346
-CAM_1_SERIAL_NUMBER = "P050HYX5410E1A001"
+CAM_1_SERIAL_NUMBER = "P008GYX5728E1B010"
 CAM_1_EXPOSURE = 10000
 CAM_1_SENS_TS = True
 # cam 2
 CAM_2_PORT = 12347
-CAM_2_SERIAL_NUMBER = "P050HYX5421E2A004"
+CAM_2_SERIAL_NUMBER = "P008GYX5728E1B011"
 CAM_2_EXPOSURE = 10000
 CAM_2_SENS_TS = True
+# ## P050
+# # cam 1
+# CAM_1_PORT = 12346
+# CAM_1_SERIAL_NUMBER = "P050HYX5410E1A001"
+# CAM_1_EXPOSURE = 10000
+# CAM_1_SENS_TS = True
+# # cam 2
+# CAM_2_PORT = 12347
+# CAM_2_SERIAL_NUMBER = "P050HYX5421E2A008"
+# CAM_2_EXPOSURE = 10000
+# CAM_2_SENS_TS = True
 
 LAUNCH_PARAMS_DICT = {
     "cam_berxel_0": {
@@ -74,6 +75,7 @@ LAUNCH_PARAMS_DICT = {
                 "params": {
                     "serial_number": CAM_0_SERIAL_NUMBER,
                     "exposure": CAM_0_EXPOSURE,
+                    "frame_rate": FRAME_RATE,
                     "sens_ts": CAM_0_SENS_TS,
                 },
             },
@@ -100,6 +102,7 @@ LAUNCH_PARAMS_DICT = {
                 "params": {
                     "serial_number": CAM_1_SERIAL_NUMBER,
                     "exposure": CAM_1_EXPOSURE,
+                    "frame_rate": FRAME_RATE,
                     "sens_ts": CAM_1_SENS_TS,
                 },
             },
@@ -126,6 +129,7 @@ LAUNCH_PARAMS_DICT = {
                 "params": {
                     "serial_number": CAM_2_SERIAL_NUMBER,
                     "exposure": CAM_2_EXPOSURE,
+                    "frame_rate": FRAME_RATE,
                     "sens_ts": CAM_2_SENS_TS,
                 },
             },
