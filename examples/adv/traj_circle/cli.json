@@ -4,7 +4,7 @@
     "use_gripper": false,
     "traj_cfg": {
         "traj_center": [
-            0.4,
+            0.45,
             0.0,
             0.35,
             1.0,
@@ -12,8 +12,8 @@
             0.0,
             0.0
         ],
-        "traj_radius": 0.15,
-        "traj_period": 4.0
+        "traj_radius": 0.2,
+        "traj_period": 8.0
     },
     "ctrl_cfg": {
         "mit_kp": [

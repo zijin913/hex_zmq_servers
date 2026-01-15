@@ -20,13 +20,15 @@ examples/
 └── adv/                             # Advanced examples (multi-device coordination)
     ├── double_gello_sim/            # GELLO + Mujoco simulation teleoperation
     ├── double_gello_real/           # GELLO + E3-Desktop teleoperation
-    ├── draw_circle/                 # Draw circle example
     ├── gello_sim/                   # GELLO + Mujoco simulation teleoperation
     ├── gello_real/                  # GELLO + real robot teleoperation
     ├── joy_sim/                     # Joystick + Mujoco simulation control
     ├── joy_real/                    # Joystick + real robot control
     ├── force_feedback/              # Force feedback teleoperation
     ├── zero_gravity/                # Zero gravity test
+    ├── traj_axis/                   # Trajectory axis example
+    ├── traj_circle/                 # Trajectory circle example
+    ├── traj_point/                  # Trajectory point example
     ├── multi_berxel/                # Multi Berxel example
     ├── multi_realsense/             # Multi Realsense example
     ├── multi_launch/                # Multi launch example
@@ -98,12 +100,15 @@ examples/
 - **zero_gravity**
   - Description: Zero gravity test example, showing how to use torque compensation to compensate the gravity of HexArm robot.
   - [Details](adv/zero_gravity/README.md)
-- **traj_circle**
-  - Description: Trajectory circle example, showing how to generate and execute a trajectory circle with the HexArm robot.
-  - [Details](adv/traj_circle/README.md)
 - **traj_axis**
   - Description: Trajectory axis example, showing how to generate and execute a trajectory axis with the HexArm robot.
   - [Details](adv/traj_axis/README.md)
+- **traj_circle**
+  - Description: Trajectory circle example, showing how to generate and execute a trajectory circle with the HexArm robot.
+  - [Details](adv/traj_circle/README.md)
+- **traj_point**
+  - Description: Trajectory point example, showing how to generate and execute a trajectory point with the HexArm robot.
+  - [Details](adv/traj_point/README.md)
 - **multi_berxel**
   - Description: Multi Berxel example, showing how to use multiple Berxel RGB-D camera devices.
   - [Details](adv/multi_berxel/README.md)

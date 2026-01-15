@@ -16,6 +16,7 @@ from hex_zmq_servers import (
 )
 from hex_robo_utils import part2trans, trans2part, euler2rot, rot2quat
 from hex_robo_utils import HexDynUtil as DynUtil
+from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
 
 INIT_JOINT = np.array(
     [0.0, -0.0205679922, 2.57081467, -0.978840246, 0.0, 0.0],
@@ -122,7 +123,7 @@ def create_traj_joint_arr(
         before_q = traj_q_arr[(i - 1) % circle_num]
         after_q = traj_q_arr[(i + 1) % circle_num]
         traj_dq_arr[i] = 0.5 * (after_q - before_q) * hz
-    return traj_q_arr, traj_q_arr, circle_num
+    return traj_q_arr, traj_dq_arr, circle_num
 
 
 def main():
@@ -149,6 +150,7 @@ def main():
         last_link=last_link,
         end_pose=END_POSE,
     )
+    plot_util = HexPlotUtil()
 
     print(f"use_gripper: {use_gripper}")
     print("create_traj_joint_arr")
@@ -170,6 +172,9 @@ def main():
     traj_idx = 0
     rate = HexRate(1000)
     pos_list = []
+    init_flag = True
+    init_limit = 0.03
+    runtime_limit = 0.1
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
@@ -190,13 +195,16 @@ def main():
                 ik_q,
                 grip_flag=False,
                 use_gripper=use_gripper,
-                err_limit=0.1,
+                err_limit=init_limit if init_flag else runtime_limit,
             )
             if use_gripper:
                 tau_comp = np.concatenate((tau_comp, np.zeros(1)), axis=0)
 
             tar_dq = np.zeros(mid_q.shape[0])
             if not interp_flag:
+                if init_flag:
+                    init_flag = False
+                    print("init finished")
                 tar_dq[:traj_dq_arr.shape[1]] = traj_dq_arr[traj_idx]
             cmds = np.zeros((mid_q.shape[0], 5))
             cmds[:, 0] = mid_q
@@ -205,6 +213,22 @@ def main():
             cmds[:, 3] = mit_kp
             cmds[:, 4] = mit_kd
             client.set_cmds(cmds)
+
+            plot_util.add_arr(
+                name="jnt",
+                data=states[:, :-1],
+                labels=["q", "dq"],
+            )
+            pos, quat = dyn_util.forward_kinematics(arm_q)[-1]
+            pose_dict = {
+                "pos": pos.tolist(),
+                "quat": quat.tolist(),
+            }
+            plot_util.add_data(
+                name="pose",
+                data=pose_dict,
+            )
+            plot_util.send_data(clear=True)
 
         traj_idx = (traj_idx + 1) % traj_num
         rate.sleep()

@@ -1,13 +1,13 @@
-# Trajectory Axis Example
+# Trajectory Point Example
 
 ## Description
 
-This example shows how to generate and execute a trajectory axis with the HexArm robot.
+This example shows how to generate and execute a trajectory point with the HexArm robot. The trajectory is a sequence of points in the workspace.
 
 ## Structure
 
 ```bash
-traj_axis/
+traj_point/
 ├── cli.py     # client code (working code)
 ├── cli.json   # client configuration
 ├── launch.py  # launch script
@@ -32,7 +32,7 @@ traj_axis/
 
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/traj_axis`, you can run the example by:
+- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/traj_point`, you can run the example by:
 
     ```bash
     source ../../../.venv/bin/activate
