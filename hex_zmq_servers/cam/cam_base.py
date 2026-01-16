@@ -52,8 +52,11 @@ class HexCamClientBase(HexZMQClientBase):
         self._used_rgb_seq = 0
         self._depth_seq = 0
         self._used_depth_seq = 0
+        self._rgbd_seq = 0
+        self._used_rgbd_seq = 0
         self._rgb_queue = deque(maxlen=self._deque_maxlen)
         self._depth_queue = deque(maxlen=self._deque_maxlen)
+        self._rgbd_queue = deque(maxlen=self._deque_maxlen)
 
     def __del__(self):
         HexZMQClientBase.__del__(self)
@@ -85,6 +88,54 @@ class HexCamClientBase(HexZMQClientBase):
                 return self._depth_queue.popleft()
         except IndexError:
             return None, None
+
+    def get_rgbd(self, newest: bool = False):
+        """Get both RGB and depth frames together (synchronized)."""
+        try:
+            if self._realtime_mode or newest:
+                hdr, rgb, depth = self._rgbd_queue[-1]
+                if self._used_rgbd_seq != hdr.get("args", 0):
+                    self._used_rgbd_seq = hdr.get("args", 0)
+                    return hdr, rgb, depth
+                else:
+                    return None, None, None
+            else:
+                return self._rgbd_queue.popleft()
+        except IndexError:
+            return None, None, None
+
+    def _get_rgbd_inner(self):
+        """Internal method to fetch RGBD from server (called by _recv_loop)."""
+        hdr, buf = self.request({"cmd": "get_rgbd"})
+
+        try:
+            if hdr is None:
+                return None, None, None
+            cmd = hdr.get("cmd", "")
+            if cmd != "get_rgbd_ok":
+                # Silently fail for expected failures
+                if cmd == "get_rgbd_failed":
+                    return None, None, None
+                # Log unexpected responses
+                print(f"\033[93mget_rgbd unexpected: {cmd}\033[0m")
+                return None, None, None
+
+            # Unpack RGB and depth from combined buffer
+            args = hdr["args"]
+            rgb_shape = tuple(args["rgb_shape"])
+            rgb_dtype = np.dtype(args["rgb_dtype"])
+            depth_shape = tuple(args["depth_shape"])
+            depth_dtype = np.dtype(args["depth_dtype"])
+
+            rgb_size = int(np.prod(rgb_shape) * rgb_dtype.itemsize)
+
+            rgb = np.frombuffer(buf[:rgb_size], dtype=rgb_dtype).reshape(rgb_shape).copy()
+            depth = np.frombuffer(buf[rgb_size:], dtype=depth_dtype).reshape(depth_shape).copy()
+
+            return hdr, rgb, depth
+        except Exception as e:
+            print(f"\033[91mget_rgbd unpack failed: {e}\033[0m")
+            return None, None, None
 
     def _get_rgb_inner(self):
         return self._process_frame(False)
@@ -121,12 +172,16 @@ class HexCamClientBase(HexZMQClientBase):
     def _recv_loop(self):
         rate = HexRate(200)
         while self._recv_flag:
-            hdr, img = self._get_rgb_inner()
+            # Use get_rgbd for synchronized frames (1 request instead of 2)
+            hdr, rgb, depth = self._get_rgbd_inner()
             if hdr is not None:
-                self._rgb_queue.append((hdr, img))
-            hdr, img = self._get_depth_inner()
-            if hdr is not None:
-                self._depth_queue.append((hdr, img))
+                self._rgbd_queue.append((hdr, rgb, depth))
+                # Also populate separate queues for backwards compatibility
+                # Create separate headers with correct cmd for legacy code
+                rgb_hdr = {**hdr, "cmd": "get_rgb_ok"}
+                depth_hdr = {**hdr, "cmd": "get_depth_ok"}
+                self._rgb_queue.append((rgb_hdr, rgb))
+                self._depth_queue.append((depth_hdr, depth))
             rate.sleep()
 
 
@@ -182,6 +237,34 @@ class HexCamServerBase(HexZMQServerBase):
             }, img
         else:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
+
+    def _get_rgbd(self, recv_hdr: dict):
+        """Get both RGB and depth frames together."""
+        try:
+            # Get latest from both queues (they are pushed together by device)
+            rgb_ts, rgb_count, rgb = self._rgb_queue[-1] if self._realtime_mode else self._rgb_queue.popleft()
+            depth_ts, depth_count, depth = self._depth_queue[-1] if self._realtime_mode else self._depth_queue.popleft()
+        except IndexError:
+            return {"cmd": "get_rgbd_failed"}, None
+        except Exception as e:
+            print(f"\033[91mget_rgbd failed: {e}\033[0m")
+            return {"cmd": "get_rgbd_failed"}, None
+
+        # Pack RGB and depth into single buffer
+        rgb_bytes = rgb.tobytes()
+        depth_bytes = depth.tobytes()
+        combined = np.frombuffer(rgb_bytes + depth_bytes, dtype=np.uint8)
+
+        return {
+            "cmd": "get_rgbd_ok",
+            "ts": rgb_ts,
+            "args": {
+                "rgb_shape": list(rgb.shape),
+                "rgb_dtype": str(rgb.dtype),
+                "depth_shape": list(depth.shape),
+                "depth_dtype": str(depth.dtype),
+            }
+        }, combined
 
     @abstractmethod
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):

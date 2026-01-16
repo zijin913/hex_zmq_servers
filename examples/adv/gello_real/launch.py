@@ -25,7 +25,7 @@ HEXARM_SRV_PORT = 12346
 
 # device config
 GELLO_DEVICE = "/dev/ttyUSB0"
-DEVICE_IP = "10.42.0.101"
+DEVICE_IP = "10.42.0.45"
 HEXARM_DEVICE_PORT = 8439
 
 # node params

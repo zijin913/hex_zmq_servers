@@ -62,6 +62,8 @@ class HexCamRealsenseServer(HexCamServerBase):
             return self._get_frame(recv_hdr, False)
         elif recv_hdr["cmd"] == "get_depth":
             return self._get_frame(recv_hdr, True)
+        elif recv_hdr["cmd"] == "get_rgbd":
+            return self._get_rgbd(recv_hdr)
         else:
             raise ValueError(f"unknown command: {recv_hdr['cmd']}")
 

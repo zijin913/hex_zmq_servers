@@ -1,0 +1,29 @@
+<mujocoinclude>
+    <!-- L6Y arm meshes -->
+    <mesh name="arm_base_link" file="arm_base_link.STL"/>
+    <mesh name="arm_link_1" file="arm_link_1.STL"/>
+    <mesh name="arm_link_2" file="arm_link_2.STL"/>
+    <mesh name="arm_link_3" file="arm_link_3.STL"/>
+    <mesh name="arm_link_4" file="arm_link_4.STL"/>
+    <mesh name="arm_link_5" file="arm_link_5.STL"/>
+    <mesh name="arm_link_6" file="arm_link_6.STL"/>
+
+    <!-- GP100 gripper meshes (mapping from l6y_gp100.urdf) -->
+    <mesh name="gripper_base_link" file="gripper_base_link.STL"/>
+    <mesh name="camera_link" file="camera_link.STL"/>
+    <!-- left helper uses link_1.STL -->
+    <mesh name="gripper_left_helper_link" file="gp100_link_1.STL"/>
+    <!-- left link 1 uses link_2.STL -->
+    <mesh name="gripper_left_link_1" file="gp100_link_2.STL"/>
+    <!-- left link 2 uses link_3.STL -->
+    <mesh name="gripper_left_link_2" file="gp100_link_3.STL"/>
+    <!-- right helper uses link_4.STL -->
+    <mesh name="gripper_right_helper_link" file="gp100_link_4.STL"/>
+    <!-- right link 1 uses link_5.STL -->
+    <mesh name="gripper_right_link_1" file="gp100_link_5.STL"/>
+    <!-- right link 2 uses link_6.STL -->
+    <mesh name="gripper_right_link_2" file="gp100_link_6.STL"/>
+
+    <!-- table -->
+    <mesh name="table_link" file="table_link.STL" scale="0.001 0.001 0.001"/>
+</mujocoinclude>

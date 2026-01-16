@@ -144,16 +144,21 @@ if _HAS_REALSENSE:
 if _HAS_MUJOCO:
     from .mujoco import HexMujocoBase, HexMujocoClientBase, HexMujocoServerBase
     from .mujoco import HexMujocoArcherY6, HexMujocoArcherY6Client, HexMujocoArcherY6Server
+    from .mujoco import HexMujocoArcherL6Y, HexMujocoArcherL6YClient, HexMujocoArcherL6YServer
     from .mujoco import HexMujocoE3Desktop, HexMujocoE3DesktopClient, HexMujocoE3DesktopServer
     HEX_ZMQ_SERVERS_PATH_DICT.update({
         "mujoco_archer_y6":
         f"{file_dir}/mujoco/archer_y6/mujoco_archer_y6_srv.py",
+        "mujoco_archer_l6y":
+        f"{file_dir}/mujoco/archer_l6y/mujoco_archer_l6y_srv.py",
         "mujoco_e3_desktop":
         f"{file_dir}/mujoco/e3_desktop/mujoco_e3_desktop_srv.py",
     })
     HEX_ZMQ_CONFIGS_PATH_DICT.update({
         "mujoco_archer_y6":
         f"{file_dir}/config/mujoco_archer_y6.json",
+        "mujoco_archer_l6y":
+        f"{file_dir}/config/mujoco_archer_l6y.json",
         "mujoco_e3_desktop":
         f"{file_dir}/config/mujoco_e3_desktop.json",
     })
@@ -165,6 +170,9 @@ if _HAS_MUJOCO:
         "HexMujocoArcherY6",
         "HexMujocoArcherY6Client",
         "HexMujocoArcherY6Server",
+        "HexMujocoArcherL6Y",
+        "HexMujocoArcherL6YClient",
+        "HexMujocoArcherL6YServer",
         "HexMujocoE3Desktop",
         "HexMujocoE3DesktopClient",
         "HexMujocoE3DesktopServer",
