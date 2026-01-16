@@ -118,11 +118,22 @@ def create_traj_joint_arr(
             start_q=traj_q_arr[i - 1],
             exit_eps=1e-4,
         )[1]
-    traj_dq_arr = np.zeros((circle_num, joint_num))
+
+    cur_dq_arr = np.zeros((circle_num, joint_num))
     for i in range(circle_num):
         before_q = traj_q_arr[(i - 1) % circle_num]
         after_q = traj_q_arr[(i + 1) % circle_num]
-        traj_dq_arr[i] = 0.5 * (after_q - before_q) * hz
+        cur_dq_arr[i] = 0.5 * (after_q - before_q) * hz
+
+    weight_np = np.array([1.0, 2.0, 3.0, 2.0, 1.0])
+    weight_np = weight_np / weight_np.sum()
+    idx_arr = np.arange(weight_np.shape[0]) - weight_np.shape[0] // 2
+    traj_dq_arr = np.zeros((circle_num, joint_num))
+    for i in range(circle_num):
+        idx_vec = idx_arr + i
+        vel_vec = cur_dq_arr[idx_vec % circle_num]
+        traj_dq_arr[i] = np.dot(weight_np, vel_vec)
+
     return traj_q_arr, traj_dq_arr, circle_num
 
 

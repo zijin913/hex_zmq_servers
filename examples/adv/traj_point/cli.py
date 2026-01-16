@@ -265,7 +265,7 @@ def main():
             cmds[:, 3] = mit_kp
             cmds[:, 4] = mit_kd
             client.set_cmds(cmds)
-            
+
             plot_util.add_arr(
                 name="jnt",
                 data=states[:, :-1],
