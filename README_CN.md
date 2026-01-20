@@ -13,10 +13,10 @@
         &nbsp;&nbsp;
         &nbsp;&nbsp;
     <a href="README.md">
-        <img src="https://img.shields.io/badge/EN-active-2ea44f?style=flat-square" />
+        <img src="https://img.shields.io/badge/EN-inactive-6b7280?style=flat-square" />
     </a>
     <a href="README_CN.md">
-        <img src="https://img.shields.io/badge/中文-inactive-6b7280?style=flat-square" />
+        <img src="https://img.shields.io/badge/中文-active-2ea44f?style=flat-square" />
     </a>
 </p>
 
