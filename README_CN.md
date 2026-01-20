@@ -2,27 +2,23 @@
 
 <p align="center">
     <a href="https://github.com/hexfellow/hex_zmq_servers/stargazers">
-        <img src="https://img.shields.io/github/stars/hexfellow/hex_zmq_servers?style=flat-square" />
+        <img src="https://img.shields.io/github/stars/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
     </a>
     <a href="https://github.com/hexfellow/hex_zmq_servers/issues">
-        <img src="https://img.shields.io/github/issues/hexfellow/hex_zmq_servers?style=flat-square" />
+        <img src="https://img.shields.io/github/issues/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
     </a>
     <a href="https://github.com/hexfellow/hex_zmq_servers/contributors">
-        <img src="https://img.shields.io/github/contributors/hexfellow/hex_zmq_servers?style=flat-square" />
+        <img src="https://img.shields.io/github/contributors/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
     </a>
-        &nbsp;&nbsp;
-        &nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
     <a href="README.md">
-        <img src="https://img.shields.io/badge/EN-inactive-6b7280?style=flat-square" />
-    </a>
-    <a href="README_CN.md">
-        <img src="https://img.shields.io/badge/中文-active-2ea44f?style=flat-square" />
+        <img src="https://img.shields.io/badge/EN-active-2ea44f?style=flat-square&logo=googletranslate" />
     </a>
 </p>
 
 ---
 
-# 2. Overview
+# 📖 Overview
 
 ## What is `hex_zmq_servers`
 
@@ -41,7 +37,7 @@
 
 ---
 
-# 3. Installation
+# 📦 Installation
 
 ## 3.1 Requirements
 
@@ -101,7 +97,7 @@ source .venv/bin/activate
 
 ---
 
-# 4. Tutorials
+# 📚 Tutorials
 
 ## 4.1 Basic Tutorial
 
@@ -193,7 +189,7 @@ See [examples/README.md](examples/README.md) for the full list and per-example R
 
 ---
 
-# 5. API List
+# 📑 API List
 
 Public APIs are exposed from the top-level package `hex_zmq_servers`. Optional device classes are available only when the matching extra is installed.
 
@@ -235,7 +231,7 @@ Public APIs are exposed from the top-level package `hex_zmq_servers`. Optional d
 
 ---
 
-# 6. Example List
+# 💡 Example List
 
 | Name                          | Purpose                    | Path                                                                                           |
 | ----------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -271,13 +267,13 @@ Public APIs are exposed from the top-level package `hex_zmq_servers`. Optional d
 
 ---
 
-# 7. License
+# 📄 License
 
 Apache License 2.0. See [LICENSE](LICENSE).
 
 ---
 
-# 8. Contributors
+# 👥 Contributors
 
 - **Author**: [Dong Zhaorui](https://github.com/IBNBlank)
 - **Maintainer**: [jecjune](https://github.com/Jecjune)
