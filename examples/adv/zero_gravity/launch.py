@@ -12,8 +12,8 @@ from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_l6y"
-GRIPPER_TYPE = "gp100_p050_handle"
+ARM_TYPE = "firefly_y6"
+GRIPPER_TYPE = "empty"
 if GRIPPER_TYPE == "empty":
     USE_GRIPPER = False
 else:
@@ -23,8 +23,8 @@ else:
 HEXARM_SRV_PORT = 12345
 
 # device config
-DEVICE_IP = "192.168.1.101"
-HEXARM_DEVICE_PORT = 9439
+DEVICE_IP = "172.18.5.116"
+HEXARM_DEVICE_PORT = 8439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

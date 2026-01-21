@@ -60,7 +60,7 @@ fi
 
 if [ "$EXAMPLES" = true ]; then
 	echo "Installing requirements for examples..."
-	uv pip install -r requirements_examples.txt
+	uv pip install -r requirements_example.txt
 fi
 
 cd $CUR_DIR

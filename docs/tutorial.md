@@ -164,8 +164,26 @@ This document shows how to use `hex_zmq_servers` to run examples and create your
     The output should be like this:
 
     ```bash
-    ...
-    wait
+    Using system clock
+    [launcher] Terminal settings recorded
+    [launcher] Started 2 nodes
+    [launcher] Starting zero_gravity_cli
+    [launcher] Starting robot_hexarm_srv
+    [zero_gravity_cli] Using system clock
+    [robot_hexarm_srv] Using system clock
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - Your control frequency is 500Hz, the report frequency is Rf500HzHz now.
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - HexDevice Api started.
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - HexDeviceApi initialized.
+    [robot_hexarm_srv] Arm not found
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - Get log from server: New connection from [::ffff:172.18.24.73]:52270 at Instant { tv_sec: 20, tv_nsec: 247727258 }. Assigning session id 2. Current Backend Git hash: 2420e05, Build time: 2026-01-19T11:44:57.240368642+08:00
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - Begin periodic task for ArmArcher_27
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - WARNING - Arm: Can not control the arm, now holder is ID: 0, waiting...
+    [robot_hexarm_srv] 2026-01-21 18:17:51 - hex_device - INFO - Arm init success
+    [zero_gravity_cli] client recv failed; recreate socket
+    [zero_gravity_cli] client recv failed; recreate socket
+    [zero_gravity_cli] client recv failed; recreate socket
+    [robot_hexarm_srv] The length of mit_kp and mit_kd is greater than the number of motors
+    [robot_hexarm_srv] 2026-01-21 18:17:52 - hex_device - INFO - Arm: You can control the arm now! Your session ID: 2
     ...
     ```
 
@@ -339,6 +357,7 @@ If you only want to create your own application, you can choose the installation
     [launcher] Starting cam_dummy_srv
     [cam_dummy_cli] Using system clock
     [cam_dummy_srv] Using system clock
+    ...
     ```
 
 ---
