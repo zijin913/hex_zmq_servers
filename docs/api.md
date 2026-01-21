@@ -1,47 +1,318 @@
 <h1 align="center">API</h1>
 
-<p align="center">
-    <a href="api.md">
-        <img src="https://img.shields.io/badge/中文-active-2ea44f?style=flat-square&logo=googletranslate" />
-    </a>
-</p>
+---
 
-Public APIs are exposed from the top-level package `hex_zmq_servers`. Optional device classes are available only when the matching extra is installed.
+# Overview
 
-| Module / file                | Class or function                                                            | Description                                                                                                                             |
-| ---------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `hex_launch`                 | `HexLaunch`                                                                  | Launches and monitors multiple nodes (subprocesses); builds `--cfg` from `cfg_path` and `cfg`.                                          |
-| `hex_launch`                 | `HexNodeConfig`                                                              | Holds and parses node configs; `parse_node_params_dict`, `get_node_cfgs_from_launch`, `get_launch_params_cfgs`, `get_cfgs`, `add_cfgs`. |
-| `hex_launch`                 | `HEX_LOG_LEVEL`                                                              | Dict: `"info"`=0, `"warn"`=1, `"err"`=2.                                                                                                |
-| `hex_launch`                 | `hex_log(level, message)`                                                    | Log by level.                                                                                                                           |
-| `hex_launch`                 | `hex_err(message)`                                                           | Print to stderr.                                                                                                                        |
-| `hex_launch`                 | `hex_dict_str(dict_raw, indent=0)`                                           | Pretty-print dict.                                                                                                                      |
-| `device_base`                | `HexDeviceBase`                                                              | Abstract device; `work_loop`, `close`, `is_working`.                                                                                    |
-| `zmq_base`                   | `hex_zmq_ts_to_ns(ts)`                                                       | Convert `{s, ns}` to nanoseconds.                                                                                                       |
-| `zmq_base`                   | `ns_to_hex_zmq_ts(ns)`                                                       | Convert nanoseconds to `{s, ns}`.                                                                                                       |
-| `zmq_base`                   | `hex_ns_now()`                                                               | Current time in ns (PTP if `HEX_PTP_CLOCK` set).                                                                                        |
-| `zmq_base`                   | `hex_zmq_ts_now()`                                                           | `{s, ns}` for now.                                                                                                                      |
-| `zmq_base`                   | `hex_zmq_ts_delta_ms(curr_ts, hdr_ts)`                                       | Delta in ms.                                                                                                                            |
-| `zmq_base`                   | `HexRate(hz, spin_threshold_ns=10_000)`                                      | Rate limiter; `sleep()`, `reset()`.                                                                                                     |
-| `zmq_base`                   | `HexZMQClientBase`                                                           | Abstract ZMQ client; `request(req_dict, req_buf)`, `is_working`, `close`.                                                               |
-| `zmq_base`                   | `HexZMQServerBase`                                                           | Abstract ZMQ server; `start()`, `work_loop()`, `_process_request`, `close`, `no_ts_hdr`.                                                |
-| `zmq_base`                   | `hex_server_helper(cfg, server_cls)`                                         | Runs `server_cls(net, params)` with `cfg["net"]`, `cfg["params"]`; `start()`, `work_loop()`, signal handling.                           |
-| `zmq_base`                   | `HexZMQDummyClient`                                                          | Dummy client; `single_test()`.                                                                                                          |
-| `zmq_base`                   | `HexZMQDummyServer`                                                          | Dummy server; handles `"test"`.                                                                                                         |
-| `robot`                      | `HexRobotBase`, `HexRobotClientBase`, `HexRobotServerBase`                   | Robot base abstractions.                                                                                                                |
-| `robot`                      | `HexRobotDummy`, `HexRobotDummyClient`, `HexRobotDummyServer`                | Dummy robot.                                                                                                                            |
-| `robot`                      | `HexRobotGello`, `HexRobotGelloClient`, `HexRobotGelloServer`                | Gello (Dynamixel).                                                                                                                      |
-| `robot`                      | `HexRobotHexarm`, `HexRobotHexarmClient`, `HexRobotHexarmServer`             | HexArm.                                                                                                                                 |
-| `robot`                      | `HEXARM_URDF_PATH_DICT`                                                      | Maps arm+gripper to URDF path.                                                                                                          |
-| `cam`                        | `HexCamBase`, `HexCamClientBase`, `HexCamServerBase`                         | Camera base abstractions.                                                                                                               |
-| `cam`                        | `HexCamDummy`, `HexCamDummyClient`, `HexCamDummyServer`                      | Dummy camera.                                                                                                                           |
-| `cam`                        | `HexCamRGB`, `HexCamRGBClient`, `HexCamRGBServer`                            | RGB (V4L2).                                                                                                                             |
-| `cam` (optional `berxel`)    | `HexCamBerxel`, `HexCamBerxelClient`, `HexCamBerxelServer`                   | Berxel RGB-D.                                                                                                                           |
-| `cam` (optional `realsense`) | `HexCamRealsense`, `HexCamRealsenseClient`, `HexCamRealsenseServer`          | RealSense RGB-D.                                                                                                                        |
-| `mujoco` (optional `mujoco`) | `HexMujocoBase`, `HexMujocoClientBase`, `HexMujocoServerBase`                | MuJoCo base.                                                                                                                            |
-| `mujoco` (optional `mujoco`) | `HexMujocoArcherY6`, `HexMujocoArcherY6Client`, `HexMujocoArcherY6Server`    | Archer Y6 sim.                                                                                                                          |
-| `mujoco` (optional `mujoco`) | `HexMujocoE3Desktop`, `HexMujocoE3DesktopClient`, `HexMujocoE3DesktopServer` | E3 Desktop sim.                                                                                                                         |
-| `hex_zmq_servers` (package)  | `HEX_ZMQ_SERVERS_PATH_DICT`                                                  | Maps device key (e.g. `"cam_rgb"`) to server script path.                                                                               |
-| `hex_zmq_servers` (package)  | `HEX_ZMQ_CONFIGS_PATH_DICT`                                                  | Maps device key to default config JSON path.                                                                                            |
+This document lists servers, clients, and utility functions in `hex_zmq_servers`.
 
 ---
+
+# Common Utilities
+
+## Functions
+
+| Function                                                  | Description                                      |
+| --------------------------------------------------------- | ------------------------------------------------ |
+| `hex_zmq_ts_to_ns(ts: dict)->int`                         | Convert `{s, ns}` to nanoseconds.                |
+| `ns_to_hex_zmq_ts(ns: int)->dict`                         | Convert nanoseconds to `{s, ns}`.                |
+| `hex_ns_now()->int`                                       | Current time in ns (PTP if `HEX_PTP_CLOCK` set). |
+| `hex_zmq_ts_now()->dict`                                  | `{s, ns}` for now.                               |
+| `hex_zmq_ts_delta_ms(curr_ts: dict, hdr_ts: dict)->float` | Delta in ms.                                     |
+
+## Classes
+
+### HexRate
+
+- A Class used to fix the rate of a loop.
+- Usage:
+  
+  ```python
+  rate = HexRate(hz)
+  while True:
+    ...
+    rate.sleep()
+  ```
+
+
+---
+
+# Devices
+
+- client common api:
+  
+    | Function       | Description                     |
+    | -------------- | ------------------------------- |
+    | `is_working()` | Check if the client is working. |
+    | `close()`      | Close the client.               |
+
+- server common parameters:
+
+    ```python
+    "net": {
+        "ip": str,
+        "port": int,
+        "realtime_mode": bool,
+        "deque_maxlen": int,
+        "client_timeout_ms": int,
+        "server_timeout_ms": int,
+        "server_num_workers": int
+    },
+    ```
+
+## Camera Devices
+
+- camera client common api:
+
+    | Function                          | Description          |
+    | --------------------------------- | -------------------- |
+    | `get_rgb(newest: bool = False)`   | Get the RGB image.   |
+    | `get_depth(newest: bool = False)` | Get the depth image. |
+
+### Dummy Camera
+
+- Dummy camera client extra api:
+    None
+
+- Dummy camera server parameters:
+    None
+
+- Usage:
+  See [examples/basic/cam_dummy](../examples/basic/cam_dummy/README.md) for details.
+
+### RGB Camera
+
+- RGB camera client extra api:
+
+    | Function      | Description            |
+    | ------------- | ---------------------- |
+    | `get_intri()` | Get camera intrinsics. |
+
+- RGB camera server parameters:
+
+    ```python
+    "params": {
+        "cam_path": str,
+        "resolution": [int, int],
+        "crop": [int, int, int, int],
+        "exposure": int,
+        "temperature": int,
+        "frame_rate": int,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/cam_rgb](../examples/basic/cam_rgb/README.md) for details.
+
+### Berxel Camera
+
+- Berxel camera client extra api:
+
+    | Function      | Description            |
+    | ------------- | ---------------------- |
+    | `get_intri()` | Get camera intrinsics. |
+
+- Berxel camera server parameters:
+
+    ```python
+    "params": {
+        "serial_number": str,
+        "exposure": int,
+        "gain": int,
+        "frame_rate": int,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/cam_berxel](../examples/basic/cam_berxel/README.md) for details.
+
+### RealSense Camera
+
+- RealSense camera client extra api:
+
+    | Function      | Description            |
+    | ------------- | ---------------------- |
+    | `get_intri()` | Get camera intrinsics. |
+
+- RealSense camera server parameters:
+
+    ```python
+    "params": {
+        "serial_number": str,
+        "resolution": [int, int],
+        "frame_rate": int,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/cam_realsense](../examples/basic/cam_realsense/README.md) for details.
+
+## Robot Devices
+
+- robot client common api:
+
+    | Function                           | Description                       |
+    | ---------------------------------- | --------------------------------- |
+    | `seq_clear()`                      | Clear sequence number cache.      |
+    | `get_dofs()`                       | Get DOF list.                     |
+    | `get_limits()`                     | Get position limits.              |
+    | `get_states(newest: bool = False)` | Get the latest robot states.      |
+    | `set_cmds(cmds: np.ndarray)`       | Send command array to the server. |
+
+### Dummy Robot
+
+- Dummy robot client extra api:
+    None
+
+- Dummy robot server parameters:
+
+    ```python
+    "params": {
+        "dofs": [int],
+        "limits": [[[float, float]]],
+        "states_init": [[float, float, float]]
+    }
+    ```
+
+- Usage:
+  See [examples/basic/robot_dummy](../examples/basic/robot_dummy/README.md) for details.
+
+### HexArm Robot
+
+- HexArm robot client extra api:
+    None
+
+- HexArm robot server parameters:
+
+    ```python
+    "params": {
+        "device_ip": str,
+        "device_port": int,
+        "control_hz": int,
+        "arm_type": str,
+        "use_gripper": bool,
+        "mit_kp": [float],
+        "mit_kd": [float],
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/robot_hexarm](../examples/basic/robot_hexarm/README.md) for details.
+
+### Gello Robot
+
+- Gello robot client extra api:
+    None
+
+- Gello robot server parameters:
+
+    ```python
+    "params": {
+        "idxs": [int],
+        "invs": [float],
+        "limits": [[float, float]],
+        "device": str,
+        "baudrate": int,
+        "max_retries": int,
+        "torque_enabled": bool,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/robot_gello](../examples/basic/robot_gello/README.md) for details.
+
+## Mujoco Devices
+
+- mujoco client common api:
+
+    | Function                                          | Description                       |
+    | ------------------------------------------------- | --------------------------------- |
+    | `reset()`                                         | Reset the MuJoCo state.           |
+    | `seq_clear()`                                     | Clear sequence number cache.      |
+    | `get_dofs()`                                      | Get DOF list.                     |
+    | `get_limits()`                                    | Get position limits.              |
+    | `get_states(robot_name: str, newest: bool=False)` | Get robot or object states.       |
+    | `get_rgb(camera_name: str, newest: bool=False)`   | Get RGB image from a camera.      |
+    | `get_depth(camera_name: str, newest: bool=False)` | Get depth image from a camera.    |
+    | `set_cmds(cmds: np.ndarray)`                      | Send command array to the server. |
+    | `get_intri()`                                     | Get camera intrinsics.            |
+
+### Archer Y6 MuJoCo
+
+- Archer Y6 client extra api:
+    None
+
+- Archer Y6 client recv config:
+
+    ```python
+    {
+        "rgb": bool,
+        "depth": bool,
+        "obj": bool
+    }
+    ```
+
+- Archer Y6 server parameters:
+
+    ```python
+    "params": {
+        "control_hz": int,
+        "states_rate": int,
+        "img_rate": int,
+        "tau_ctrl": bool,
+        "mit_kp": [float],
+        "mit_kd": [float],
+        "cam_type": str,
+        "headless": bool,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/mujoco_archer_y6](../examples/basic/mujoco_archer_y6/README.md) for details.
+
+### E3-Desktop MuJoCo
+
+- E3-Desktop client extra api:
+
+    | Function                                      | Description                          |
+    | --------------------------------------------- | ------------------------------------ |
+    | `set_cmds(cmds: np.ndarray, robot_name: str)` | Send commands for left or right arm. |
+
+- E3-Desktop client recv config:
+
+    ```python
+    {
+        "head_rgb": bool,
+        "head_depth": bool,
+        "left_rgb": bool,
+        "left_depth": bool,
+        "right_rgb": bool,
+        "right_depth": bool,
+        "obj": bool
+    }
+    ```
+
+- E3-Desktop server parameters:
+
+    ```python
+    "params": {
+        "control_hz": int,
+        "states_rate": int,
+        "img_rate": int,
+        "tau_ctrl": bool,
+        "mit_kp": [float],
+        "mit_kd": [float],
+        "cam_type": [str, str, str],
+        "headless": bool,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/mujoco_e3_desktop](../examples/basic/mujoco_e3_desktop/README.md) for details.

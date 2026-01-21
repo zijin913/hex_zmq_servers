@@ -26,11 +26,52 @@ None.
 
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/basic/zmq_dummy`, you can run the example by:
+1. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
     ```
 
-- This example is useful for understanding the underlying communication protocol and testing network performance.
+2. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/basic/zmq_dummy
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    Using system clock
+    [launcher] Terminal settings recorded
+    [launcher] Started 2 nodes
+    [launcher] Starting zmq_dummy_cli
+    [launcher] Starting zmq_dummy_srv
+    [zmq_dummy_srv] Using system clock
+    [zmq_dummy_cli] Using system clock
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4297, 'ns': 581289423}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4297, 'ns': 681398189}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4297, 'ns': 781394920}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4297, 'ns': 881398640}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4297, 'ns': 981410178}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4298, 'ns': 81405052}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    [zmq_dummy_srv] test received
+    [zmq_dummy_srv] recv_hdr: {'cmd': 'test', 'ts': {'s': 4298, 'ns': 181396538}, 'args': None, 'dtype': 'uint8', 'shape': [0]}
+    [zmq_dummy_srv] recv_buf: []
+    ...
+    ```

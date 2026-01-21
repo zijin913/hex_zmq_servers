@@ -1,12 +1,14 @@
 <h1 align="center">TUTORIAL</h1>
 
-<p align="center">
-    <a href="tutorial_cn.md">
-        <img src="https://img.shields.io/badge/中文-active-2ea44f?style=flat-square&logo=googletranslate" />
-    </a>
-</p>
+---
 
-**Note**: Make sure you have installed the library from source code.
+# Overview
+
+This document shows how to use `hex_zmq_servers` to run examples and create your own application.
+
+**Note**: Make sure you have installed the library from source code if you want to run the example-related tutorials below.
+
+---
 
 # Run minimal example
 
@@ -171,53 +173,148 @@
 
 # Create your own application
 
-1. **Activate the virtual environment**
+If you only want to create your own application, you can choose the installation method you like (**from PyPI** or **from source code**).
 
-    ```bash
-    cd path/to/hex_zmq_servers
-    source .venv/bin/activate
-    ```
+*Assuming you want to create an **dummy rgb camera application***
+
+1. **Make sure you have installed the library**
+
+    - From PyPI
+
+        ```bash
+        pip list | grep hex_zmq_servers
+        ```
+
+    - From source code
+
+        ```bash
+        uv pip list | grep hex_zmq_servers
+        ```
+
+    If you can see `hex_zmq_servers` in the output, it means you have installed the library successfully.
 
 2. **Create your own application**
 
     ```bash
-    mkdir -p my_app
-    touch my_app/cli.py
-    touch my_app/cli.json
-    touch my_app/launch.py
+    mkdir -p path/to/my_app
+    touch path/to/my_app/cli.py
+    touch path/to/my_app/cli.json
+    touch path/to/my_app/launch.py
     ```
 
-3. **Write your client code in `my_app/cli.py`**
+3. **Write your client code in `cli.py`**
 
     ```python
-    from hex_zmq_servers import HexZMQClientBase
+    import argparse, json
+    from hex_zmq_servers import (
+        HexRate,
+        HexCamDummyClient,
+    )
 
-    class MyAppClient(HexZMQClientBase):
-        def __init__(self, cfg: dict):
-            super().__init__(cfg)
+    import cv2
 
-        def work_loop(self):
-            pass
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--cfg", type=str, required=True)
+        args = parser.parse_args()
+        cfg = json.loads(args.cfg)
+
+        # camera client
+        net_config = cfg["net"]
+        client = HexCamDummyClient(net_config=net_config)
+
+        rate = HexRate(200)
+        try:
+            while True:
+                rgb_hdr, rgb_img = client.get_rgb()
+                if rgb_hdr is not None:
+                    cv2.imshow("rgb_img", rgb_img)
+
+                key = cv2.waitKey(1)
+                if key == ord('q'):
+                    break
+
+                rate.sleep()
+        finally:
+            cv2.destroyAllWindows()
+
+
+    if __name__ == '__main__':
+        main()
     ```
 
-4. **Write your config code in `my_app/cli.json`**
+4. **Write your config code in `cli.json`**
 
     ```json
     {
         "net": {
             "ip": "127.0.0.1",
-            "port": 12345
+            "port": 12345,
+            "realtime_mode": false,
+            "deque_maxlen": 10,
+            "client_timeout_ms": 200,
+            "server_timeout_ms": 1000,
+            "server_num_workers": 4
         }
     }
     ```
 
-5. **Write your launch code in `my_app/launch.py`**
+5. **Write your launch code in `launch.py`**
 
     ```python
-    from hex_zmq_servers import HexLaunch
+    import os
+    from hex_zmq_servers import HexLaunch, HexNodeConfig
+    from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
-    launch = HexLaunch(MyAppClient)
-    launch.run()
+    # node params
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    NODE_PARAMS_DICT = {
+        # cli
+        "cam_dummy_cli": {
+            "name": "cam_dummy_cli",
+            "node_path":
+            f"{SCRIPT_DIR}/cli.py",
+            "cfg_path":
+            f"{SCRIPT_DIR}/cli.json",
+            "cfg": {
+                "net": {
+                    "ip": "127.0.0.1",
+                    "port": 12345,
+                },
+            },
+        },
+        # srv
+        "cam_dummy_srv": {
+            "name": "cam_dummy_srv",
+            "node_path": HEX_ZMQ_SERVERS_PATH_DICT["cam_dummy"],
+            "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["cam_dummy"],
+            "cfg": {
+                "net": {
+                    "ip": "127.0.0.1",
+                    "port": 12345,
+                },
+            },
+        },
+    }
+
+
+    def get_node_cfgs(node_params_dict: dict = NODE_PARAMS_DICT,
+                    launch_arg: dict | None = None):
+        return HexNodeConfig.parse_node_params_dict(
+            node_params_dict,
+            NODE_PARAMS_DICT,
+        )
+
+
+    def main():
+        node_cfgs = get_node_cfgs()
+        launch = HexLaunch(node_cfgs)
+        launch.run()
+
+
+    if __name__ == '__main__':
+        main()
     ```
 
 6. **Run your application**
@@ -225,16 +322,23 @@
     Run the launch script:
 
     ```bash
-    cd my_app
+    cd path/to/my_app
     python launch.py
     ```
+
+    You can see a random rgb image like this:
+    ![random rgb image](random_rgb_image.jpg)
 
     The output should be like this:
 
     ```bash
-    ...
-    wait
-    ...
+    Using system clock
+    [launcher] Terminal settings recorded
+    [launcher] Started 2 nodes
+    [launcher] Starting cam_dummy_cli
+    [launcher] Starting cam_dummy_srv
+    [cam_dummy_cli] Using system clock
+    [cam_dummy_srv] Using system clock
     ```
 
 ---

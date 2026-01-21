@@ -28,7 +28,7 @@ robot_gello/
     ls /dev/ttyUSB*
     ```
 
-2. Set device permission:
+2. Set device permission (Assuming the device port is `/dev/ttyUSB0`):
 
     ```bash
     sudo chmod 666 /dev/ttyUSB0
@@ -41,15 +41,38 @@ robot_gello/
     # Logout and login again
     ```
 
-4. (**Important**) Modify the `GELLO_DEVICE` in `launch.py` to match your device port (e.g., `/dev/ttyUSB0`) before running the example.
-
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/basic/robot_gello`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
 
-    ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    Modify the `GELLO_DEVICE` in `launch.py` to match your device port before running the example.
+
+    Assuming the device port is `/dev/ttyUSB0`, you can modify the `launch.py` as follows:
+
+    ```python
+    ...
+    GELLO_DEVICE = "/dev/ttyUSB0"
+    ...
     ```
 
-- ⚠️ **Safety Notice**: This controls a real robot. Make sure there is enough safe space around the robot and you can cut off power at any time.
+2. Activate the virtual environment
+
+    ```bash
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
+    ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/basic/robot_gello
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
+    ```

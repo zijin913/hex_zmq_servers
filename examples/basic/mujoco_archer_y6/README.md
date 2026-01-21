@@ -26,11 +26,24 @@ None.
 
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/basic/mujoco_archer_y6`, you can run the example by:
+1. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
     ```
 
-- The Mujoco visualization window will open automatically.
+2. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/basic/mujoco_archer_y6
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
+    ```

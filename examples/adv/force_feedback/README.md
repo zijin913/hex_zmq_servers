@@ -20,21 +20,51 @@ force_feedback/
 
 - HexArm robot
 
-### Environment
-
-1. Find the robot IP address.
-
-2. (**Important**) Modify the `ARM_TYPE` and `GRIPPER_TYPE` in `launch.py` to match your device model before running the example.
-
-3. (**Important**) Modify the `DEVICE_IP`, `MASTER_DEVICE_PORT` and `SLAVE_DEVICE_PORT` in `launch.py` to match your device port (e.g., `MASTER_DEVICE_IP = "192.168.1.101"`, `SLAVE_DEVICE_IP = "192.168.1.101"`,`MASTER_DEVICE_PORT = 8439` and `SLAVE_DEVICE_PORT = 9439`) before running the example.
-   1. `CAN0` => `8439`
-   2. `CAN1` => `9439`
-
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/force_feedback`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
+
+    Modify the `ARM_TYPE`, `GRIPPER_TYPE`, `MASTER_DEVICE_IP`, `SLAVE_DEVICE_IP`, `MASTER_DEVICE_PORT` and `SLAVE_DEVICE_PORT` in `launch.py` to match your devices. `CAN0` => `8439`, `CAN1` => `9439`.
+
+    Assuming:
+    - The arm is `archer_y6` with `gp100` gripper
+    - The controller IP is `172.18.5.116`
+    - The master arm is plugged into `CAN0`, which means the device port is `8439`
+    - The slave arm is plugged into `CAN1`, which means the device port is `9439`
+
+    ```python
+    ...
+    ARM_TYPE = "archer_y6"
+    GRIPPER_TYPE = "gp100"
+    MASTER_DEVICE_IP = "172.18.5.116"
+    SLAVE_DEVICE_IP = "172.18.5.116"
+    MASTER_DEVICE_PORT = 8439
+    SLAVE_DEVICE_PORT = 9439
+    ...
+    ```
+
+2. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
     ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/adv/force_feedback
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
+    ```
+
+## Safety Notice
+
+- ⚠️ Make sure there is enough safe space around the robot and you can cut off power at any time.

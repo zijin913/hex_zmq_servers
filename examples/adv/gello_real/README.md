@@ -31,7 +31,7 @@ gello_real/
     ls /dev/ttyUSB*
     ```
 
-2. Set device permission:
+2. Set device permission (Assuming the device port is `/dev/ttyUSB0`):
 
     ```bash
     sudo chmod 666 /dev/ttyUSB0
@@ -44,23 +44,50 @@ gello_real/
     # Logout and login again
     ```
 
-4. (**Important**) Modify the `GELLO_DEVICE` in `launch.py` to match your device port (e.g., `/dev/ttyUSB0`) before running the example.
-
-**For HexArm robot:**
-
-1. Find the robot IP address.
-
-2. (**Important**) Modify the `ARM_TYPE` and `GRIPPER_TYPE` in `launch.py` to match your device model before running the example.
-
-3. (**Important**) Modify the `DEVICE_IP` and `HEXARM_DEVICE_PORT` in `launch.py` to match your device port (e.g., `DEVICE_IP = "192.168.1.101"` and `HEXARM_DEVICE_PORT = 8439`) before running the example.
-   1. `CAN0` => `8439`
-   2. `CAN1` => `9439`
-
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/gello_real`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
+
+    Modify the `GELLO_DEVICE`, `ARM_TYPE`, `GRIPPER_TYPE`, `DEVICE_IP` and `HEXARM_DEVICE_PORT` in `launch.py` to match your devices. `CAN0` => `8439`, `CAN1` => `9439`.
+
+    Assuming:
+    - GELLO device port is `/dev/ttyUSB0`
+    - The arm is `archer_y6` with `gp100` gripper
+    - The controller ip is `172.18.5.116`
+    - The arm is plugged into `CAN0`, which means the device port is `8439`
+
+    ```python
+    ...
+    GELLO_DEVICE = "/dev/ttyUSB0"
+    ARM_TYPE = "archer_y6"
+    GRIPPER_TYPE = "gp100"
+    DEVICE_IP = "172.18.5.116"
+    HEXARM_DEVICE_PORT = 8439
+    ...
+    ```
+
+2. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
     ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/adv/gello_real
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
+    ```
+
+## Safety Notice
+
+- ⚠️ Make sure there is enough safe space around the robot and you can cut off power at any time.

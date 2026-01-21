@@ -7,10 +7,8 @@ This example shows how to use multiple Berxel RGB-D camera devices using multi-l
 ## Structure
 
 ```bash
-cam_berxel/
-├── cli.py     # client code (working code)
-├── cli.json   # client configuration
-├── launch.py  # launch script
+multi_launch_berxel/
+├── launch.py  # multi-launch script
 └── README.md  # this file
 ```
 
@@ -30,13 +28,40 @@ cam_berxel/
 
 2. If permission denied, you may need to add udev rules. For details, please refer to the [Berxel Website](https://www.hessian-matrix.com/%e4%b8%8b%e8%bd%bd%e4%b8%ad%e5%bf%83/).
 
-3. (**Important**) Modify the `SERIAL_NUMBER` and `EXPOSURE` in `launch.py` to match your device before running the example.
-
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/multi_berxel`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
+
+    Modify the `CAM_*_SERIAL_NUMBER` in `launch.py` to match your devices before running the example.
+
+    Assuming the device serial numbers are `P050HYX5421E2A008`, `P050HYX5421E2A009` and `P050HYX5421E2A010`, you can modify the `launch.py` as follows:
+
+    ```python
+    ...
+    CAM_0_SERIAL_NUMBER = "P050HYX5421E2A008"
+    CAM_1_SERIAL_NUMBER = "P050HYX5421E2A009"
+    CAM_2_SERIAL_NUMBER = "P050HYX5421E2A010"
+    ...
+    ```
+
+2. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
+    ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/adv/multi_launch_berxel
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
     ```

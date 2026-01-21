@@ -1,9 +1,6 @@
 <h1 align="center">HEXFELLOW ZMQ SERVERS</h1>
 
 <p align="center">
-    <a href="https://github.com/hexfellow/hex_zmq_servers/issues">
-        <img src="https://img.shields.io/github/issues/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
-    </a>
     <a href="https://github.com/hexfellow/hex_zmq_servers/stargazers">
         <img src="https://img.shields.io/github/stars/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
     </a>
@@ -14,8 +11,8 @@
         <img src="https://zenodo.org/badge/1088506315.svg" alt="DOI">
     </a>
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="README_CN.md">
-        <img src="https://img.shields.io/badge/中文-active-2ea44f?style=flat-square&logo=googletranslate" />
+    <a href="https://github.com/hexfellow/hex_zmq_servers/issues">
+        <img src="https://img.shields.io/github/issues/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
     </a>
 </p>
 
@@ -146,4 +143,3 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 [![Star History Chart](https://api.star-history.com/svg?repos=hexfellow/hex_zmq_servers&type=Date)](https://star-history.com/#hexfellow/hex_zmq_servers&Date)
 
----
