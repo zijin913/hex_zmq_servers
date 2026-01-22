@@ -42,7 +42,6 @@ def main():
     try:
         model_path = cfg["model_path"]
         last_link = cfg["last_link"]
-        use_gripper = cfg["use_gripper"]
         hexarm_net_cfg = cfg["hexarm_net_cfg"]
     except KeyError as ke:
         missing_key = ke.args[0]
@@ -56,6 +55,15 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "hexarm server is not working")
         return
 
+    # parameters
+    dof_arr = hexarm_client.get_dofs()
+    dofs = {
+        "robot_arm": dof_arr[0],
+        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
+        "sum": dof_arr.sum(),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
     # work loop
     rate = HexRate(500)
     while True:
@@ -64,12 +72,13 @@ def main():
         if hexarm_states_hdr is not None:
             cur_q = hexarm_states[:, 0]
             cur_dq = hexarm_states[:, 1]
-            arm_q = cur_q[:-1] if use_gripper else cur_q
-            arm_dq = cur_dq[:-1] if use_gripper else cur_dq
+            arm_q = cur_q[dofs["robot_arm"]]
+            arm_dq = cur_dq[dofs["robot_arm"]]
+
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-            tau_comp = c_mat @ arm_dq + g_vec
-            if use_gripper:
-                tau_comp = np.concatenate((tau_comp, np.zeros(1)), axis=0)
+            tau_comp = np.zeros(dofs["sum"])
+            tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+
             cmds = np.concatenate(
                 (cur_q.reshape(-1, 1), tau_comp.reshape(-1, 1)), axis=1)
             hexarm_client.set_cmds(cmds)

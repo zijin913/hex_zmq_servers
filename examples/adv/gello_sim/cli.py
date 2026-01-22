@@ -57,6 +57,14 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "mujoco server is not working")
         return
 
+    dof_arr = mujoco_client.get_dofs()
+    dofs = {
+        "robot_arm": dof_arr[0],
+        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
+        "sum": dof_arr.sum(),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
     # work loop
     rate = HexRate(250)
     gello_cmds = None
@@ -70,11 +78,13 @@ def main():
             # robot
             robot_states_hdr, robot_states = mujoco_client.get_states("robot")
             if robot_states_hdr is not None:
-                arm_q = robot_states[:, 0][:-1]
-                arm_dq = robot_states[:, 1][:-1]
+                arm_q = robot_states[:, 0][dofs["robot_arm"]]
+                arm_dq = robot_states[:, 1][dofs["robot_arm"]]
+
                 _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-                tau_comp = np.zeros(7)
-                tau_comp[:-1] = c_mat @ arm_dq + g_vec
+                tau_comp = np.zeros(dofs["sum"])
+                tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+
                 if gello_cmds is not None:
                     cmds = np.concatenate(
                         (gello_cmds.reshape(-1, 1), tau_comp.reshape(-1, 1)),

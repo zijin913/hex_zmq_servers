@@ -14,10 +14,6 @@ from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 # robot model config
 ARM_TYPE = "firefly_y6"
 GRIPPER_TYPE = "empty"
-if GRIPPER_TYPE == "empty":
-    USE_GRIPPER = False
-else:
-    USE_GRIPPER = True
 
 # device config
 DEVICE_IP = "172.18.5.116"
@@ -38,7 +34,6 @@ NODE_PARAMS_DICT = {
         f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_circle/cli.json",
         "cfg": {
             "model_path": HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
-            "use_gripper": USE_GRIPPER,
             "ctrl_cfg": {
                 "mit_kp": MIT_KP,
                 "mit_kd": MIT_KD,
@@ -66,7 +61,6 @@ NODE_PARAMS_DICT = {
                 "device_port": HEXARM_DEVICE_PORT,
                 "control_hz": 1000,
                 "arm_type": ARM_TYPE,
-                "use_gripper": USE_GRIPPER,
                 "mit_kp": MIT_KP,
                 "mit_kd": MIT_KD,
                 "sens_ts": True,

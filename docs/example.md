@@ -18,6 +18,7 @@ This document shows how to use various devices and functions in `hex_zmq_servers
 | `robot_dummy`       | Dummy robot test       | [examples/basic/robot_dummy](../examples/basic/robot_dummy/README.md)             |
 | `robot_gello`       | Gello robot test       | [examples/basic/robot_gello](../examples/basic/robot_gello/README.md)             |
 | `robot_hexarm`      | HexArm robot test      | [examples/basic/robot_hexarm](../examples/basic/robot_hexarm/README.md)           |
+| `robot_hello`       | Hello robot test       | [examples/basic/robot_hello](../examples/basic/robot_hello/README.md)             |
 | `cam_dummy`         | Dummy camera test      | [examples/basic/cam_dummy](../examples/basic/cam_dummy/README.md)                 |
 | `cam_rgb`           | RGB camera test        | [examples/basic/cam_rgb](../examples/basic/cam_rgb/README.md)                     |
 | `cam_berxel`        | Berxel RGB-D test      | [examples/basic/cam_berxel](../examples/basic/cam_berxel/README.md)               |
@@ -33,6 +34,8 @@ This document shows how to use various devices and functions in `hex_zmq_servers
 | ----------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `gello_sim`                   | Gello + Archer Y6 Mujoco teleop         | [examples/adv/gello_sim](../examples/adv/gello_sim/README.md)                                     |
 | `gello_real`                  | Gello + HexArm real-world teleop        | [examples/adv/gello_real](../examples/adv/gello_real/README.md)                                   |
+| `hello_sim`                   | Hello + Archer Y6 Mujoco teleop         | [examples/adv/hello_sim](../examples/adv/hello_sim/README.md)                                     |
+| `hello_real`                  | Hello + HexArm real-world teleop        | [examples/adv/hello_real](../examples/adv/hello_real/README.md)                                   |
 | `joy_sim`                     | Joystick + Archer Y6 Mujoco teleop      | [examples/adv/joy_sim](../examples/adv/joy_sim/README.md)                                         |
 | `joy_real`                    | Joystick + HexArm real-world teleop     | [examples/adv/joy_real](../examples/adv/joy_real/README.md)                                       |
 | `force_feedback`              | Force feedback teleop                   | [examples/adv/force_feedback](../examples/adv/force_feedback/README.md)                           |

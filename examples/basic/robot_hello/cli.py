@@ -16,8 +16,6 @@ from hex_zmq_servers import (
     HexRobotHexarmClient,
 )
 
-import numpy as np
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -34,6 +32,7 @@ def main():
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
 
+    # get dofs
     dof_arr = client.get_dofs()
     dofs = {
         "robot_arm": dof_arr[0],
@@ -51,22 +50,20 @@ def main():
             curr_ts = hex_zmq_ts_now()
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"states_seq: {states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
+                f"states_ts: {states_hdr['ts']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
-            hex_log(HEX_LOG_LEVEL["info"], f"states pos: {states[:, 0]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {states[:, 1]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states eff: {states[:, 2]}")
-
-        cmds = np.array([
-            0.2,
-            -1.5,
-            3.0,
-            0.0,
-            0.0,
-            0.0,
-            0.5,
-        ])
-        client.set_cmds(cmds)
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"states pos: {states[dofs['robot_arm'], 0]}")
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"states vel: {states[dofs['robot_arm'], 1]}")
+            hex_log(
+                HEX_LOG_LEVEL["info"],
+                f"trigger: {states[dofs['robot_gripper'][0], 0]}; axis x: {states[dofs['robot_gripper'][1], 0]}; axis y: {states[dofs['robot_gripper'][2], 0]}"
+            )
+            hex_log(
+                HEX_LOG_LEVEL["info"],
+                f"btn a: {states[dofs['robot_gripper'][3], 0]}; btn b: {states[dofs['robot_gripper'][4], 0]}; btn x: {states[dofs['robot_gripper'][5], 0]}; btn y: {states[dofs['robot_gripper'][6], 0]}"
+            )
 
         rate.sleep()
 

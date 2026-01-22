@@ -193,7 +193,6 @@ This document lists servers, clients, and utility functions in `hex_zmq_servers`
         "device_port": int,
         "control_hz": int,
         "arm_type": str,
-        "use_gripper": bool,
         "mit_kp": [float],
         "mit_kd": [float],
         "sens_ts": bool

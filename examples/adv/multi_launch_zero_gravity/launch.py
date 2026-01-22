@@ -24,10 +24,6 @@ LAUNCH_PATH_DICT = {
 # robot model config
 ARM_TYPE = "archer_y6"
 GRIPPER_TYPE = "empty"
-if GRIPPER_TYPE == "empty":
-    USE_GRIPPER = False
-else:
-    USE_GRIPPER = True
 
 # zero gravity 0
 ZERO_GRAVITY_0_SRV_PORT = 12345
@@ -46,7 +42,6 @@ LAUNCH_PARAMS_DICT = {
                 "model_path":
                 HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
                 "last_link": "link_6",
-                "use_gripper": USE_GRIPPER,
                 "hexarm_net_cfg": {
                     "port": ZERO_GRAVITY_0_SRV_PORT,
                 },
@@ -63,7 +58,6 @@ LAUNCH_PARAMS_DICT = {
                     "device_port": ZERO_GRAVITY_0_DEVICE_PORT,
                     "control_hz": 500,
                     "arm_type": ARM_TYPE,
-                    "use_gripper": USE_GRIPPER,
                     "mit_kp": [0.0] * 7,
                     "mit_kd": [0.0] * 7,
                     "sens_ts": True,
@@ -78,7 +72,6 @@ LAUNCH_PARAMS_DICT = {
                 "model_path":
                 HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
                 "last_link": "link_6",
-                "use_gripper": USE_GRIPPER,
                 "hexarm_net_cfg": {
                     "port": ZERO_GRAVITY_1_SRV_PORT,
                 },
@@ -95,7 +88,6 @@ LAUNCH_PARAMS_DICT = {
                     "device_port": ZERO_GRAVITY_1_DEVICE_PORT,
                     "control_hz": 500,
                     "arm_type": ARM_TYPE,
-                    "use_gripper": USE_GRIPPER,
                     "mit_kp": [0.0] * 7,
                     "mit_kd": [0.0] * 7,
                     "sens_ts": True,

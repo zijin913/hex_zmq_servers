@@ -9,39 +9,26 @@
 import os
 from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
-from hex_zmq_servers import HEXARM_URDF_PATH_DICT
-
-# robot model config
-ARM_TYPE = "firefly_y6"
-GRIPPER_TYPE = "empty"
 
 # device config
-DEVICE_IP = "172.18.5.116"
+DEVICE_IP = "172.18.23.197"
 HEXARM_DEVICE_PORT = 8439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HEX_ZMQ_SERVERS_DIR = f"{SCRIPT_DIR}/../../../hex_zmq_servers"
-MIT_KP = [400.0, 400.0, 500.0, 200.0, 100.0, 100.0]
-MIT_KD = [5.0, 5.0, 5.0, 5.0, 2.0, 2.0]
 NODE_PARAMS_DICT = {
     # cli
-    "traj_point_cli": {
-        "name": "traj_point_cli",
+    "robot_hello_cli": {
+        "name": "robot_hello_cli",
         "node_path":
-        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_point/cli.py",
+        f"{HEX_ZMQ_SERVERS_DIR}/../examples/basic/robot_hello/cli.py",
         "cfg_path":
-        f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/traj_point/cli.json",
+        f"{HEX_ZMQ_SERVERS_DIR}/../examples/basic/robot_hello/cli.json",
         "cfg": {
-            "model_path": HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
-            "ctrl_cfg": {
-                "mit_kp": MIT_KP,
-                "mit_kd": MIT_KD,
-            },
             "net": {
                 "ip": "127.0.0.1",
                 "port": 12345,
-                "realtime_mode": True,
             },
         },
     },
@@ -54,15 +41,12 @@ NODE_PARAMS_DICT = {
             "net": {
                 "ip": "127.0.0.1",
                 "port": 12345,
-                "realtime_mode": True,
             },
             "params": {
                 "device_ip": DEVICE_IP,
                 "device_port": HEXARM_DEVICE_PORT,
-                "control_hz": 1000,
-                "arm_type": ARM_TYPE,
-                "mit_kp": MIT_KP,
-                "mit_kd": MIT_KD,
+                "control_hz": 500,
+                "arm_type": "hello",
                 "sens_ts": True,
             },
         },

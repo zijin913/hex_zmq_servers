@@ -13,7 +13,6 @@
         "device_port": 8439,
         "control_hz": 1000,
         "arm_type": "archer_l6y",
-        "use_gripper": true,
         "mit_kp": [
             200.0,
             200.0,

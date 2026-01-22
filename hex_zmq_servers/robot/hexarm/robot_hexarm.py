@@ -26,7 +26,6 @@ ROBOT_CONFIG = {
     "device_port": 8439,
     "control_hz": 250,
     "arm_type": "archer_y6",
-    "use_gripper": True,
     "mit_kp": [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0],
     "mit_kd": [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
     "sens_ts": True,
@@ -37,6 +36,7 @@ HEX_DEVICE_TYPE_DICT = {
     "archer_d6y": 16,
     "archer_l6y": 17,
     "firefly_y6": 27,
+    "hello": 26,
 }
 
 
@@ -54,7 +54,6 @@ class HexRobotHexarm(HexRobotBase):
             device_port = robot_config["device_port"]
             control_hz = robot_config["control_hz"]
             arm_type = HEX_DEVICE_TYPE_DICT[robot_config["arm_type"]]
-            use_gripper = robot_config["use_gripper"]
             self.__sens_ts = robot_config["sens_ts"]
         except KeyError as ke:
             missing_key = ke.args[0]
@@ -94,10 +93,9 @@ class HexRobotHexarm(HexRobotBase):
         self.__arm.start()
 
         # try to open gripper
-        if use_gripper:
-            self.__gripper = self.__hex_api.find_optional_device_by_id(1)
-            if self.__gripper is None:
-                print("\033[33mGripper not found\033[0m")
+        self.__gripper = self.__hex_api.find_optional_device_by_id(1)
+        if self.__gripper is None:
+            print("\033[33mGripper not found\033[0m")
 
         # variables init
         arm_dofs = len(self.__arm)

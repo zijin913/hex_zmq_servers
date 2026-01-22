@@ -2,7 +2,7 @@
 
 ## Description
 
-This example shows how to use GELLO robot device. It reads the joint positions from GELLO robot and provides position, velocity, and torque feedback.
+This example shows how to use GELLO robot device. It reads the joint positions from GELLO robot and provides position.
 
 ## Structure
 

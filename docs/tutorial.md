@@ -105,10 +105,6 @@ This document shows how to use `hex_zmq_servers` to run examples and create your
     # robot model config
     ARM_TYPE = "archer_l6y"
     GRIPPER_TYPE = "gp100_p050_handle"
-    if GRIPPER_TYPE == "empty":
-        USE_GRIPPER = False
-    else:
-        USE_GRIPPER = True
 
     # server ports
     HEXARM_SRV_PORT = 12345
@@ -130,10 +126,6 @@ This document shows how to use `hex_zmq_servers` to run examples and create your
     ...
     ARM_TYPE = "firefly_y6"
     GRIPPER_TYPE = "empty"
-    if GRIPPER_TYPE == "empty":
-        USE_GRIPPER = False
-    else:
-        USE_GRIPPER = True
     
     # server ports
     HEXARM_SRV_PORT = 12345

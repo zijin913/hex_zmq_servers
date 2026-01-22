@@ -60,6 +60,15 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
     hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
+    
+    dof_arr = client.get_dofs()
+    dofs = {
+        "left_arm": dof_arr[0],
+        "left_gripper": dof_arr[1],
+        "right_arm": dof_arr[2],
+        "right_gripper": dof_arr[3],
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     # get states, rgb and depth, and set cmds
     rate = HexRate(2e3)

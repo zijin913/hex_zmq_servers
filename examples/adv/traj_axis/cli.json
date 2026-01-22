@@ -1,7 +1,6 @@
 {
     "model_path": "hex_zmq_servers/robot/hexarm/urdf/archer_l6y/gp100_p050_handle.urdf",
     "last_link": "link_6",
-    "use_gripper": false,
     "traj_cfg": {
         "traj_center": [
             0.25,

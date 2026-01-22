@@ -52,24 +52,18 @@ def interp_joint(cur_q, tar_joint, err_limit=0.05):
 def interp_arm(cur_q,
                tar_joint,
                grip_flag=True,
-               use_gripper=True,
+               dofs: dict = None,
                err_limit=0.05):
-    mid_joint = np.zeros(7 if use_gripper else 6)
-    if use_gripper:
-        mid_joint[:-1], interp_flag = interp_joint(
-            cur_q[:-1],
-            tar_joint,
-            err_limit=err_limit,
-        )
-        mid_joint[-1], _ = interp_joint(
-            cur_q[-1],
+    mid_joint = np.zeros(dofs["sum"])
+    mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
+        cur_q[dofs["robot_arm"]],
+        tar_joint,
+        err_limit=err_limit,
+    )
+    if dofs["robot_gripper"] is not None:
+        mid_joint[dofs["robot_gripper"]], _ = interp_joint(
+            cur_q[dofs["robot_gripper"]],
             1.33 if grip_flag else 0.2,
-            err_limit=err_limit,
-        )
-    else:
-        mid_joint, interp_flag = interp_joint(
-            cur_q,
-            tar_joint,
             err_limit=err_limit,
         )
     return mid_joint, interp_flag
@@ -145,7 +139,6 @@ def main():
     try:
         model_path = cfg["model_path"]
         last_link = cfg["last_link"]
-        use_gripper = cfg["use_gripper"]
         mit_kp = np.array(cfg["ctrl_cfg"]["mit_kp"])
         mit_kd = np.array(cfg["ctrl_cfg"]["mit_kd"])
         traj_cfg = cfg["traj_cfg"]
@@ -162,7 +155,6 @@ def main():
     )
     plot_util = HexPlotUtil()
 
-    print(f"use_gripper: {use_gripper}")
     print("create_traj_joint_arr")
     traj_q_arr, traj_dq_arr, traj_num = create_traj_joint_arr(
         np.array(traj_cfg["traj_center"]),
@@ -179,6 +171,14 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "hexarm server is not working")
         return
 
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": dof_arr[0],
+        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
+        "sum": dof_arr.sum(),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
     traj_idx = 0
     rate = HexRate(1000)
     init_flag = True
@@ -189,21 +189,21 @@ def main():
         if states_hdr is not None:
             cur_q = states[:, 0]
             cur_dq = states[:, 1]
-            arm_q = cur_q[:-1] if use_gripper else cur_q
-            arm_dq = cur_dq[:-1] if use_gripper else cur_dq
+            arm_q = cur_q[dofs["robot_arm"]]
+            arm_dq = cur_dq[dofs["robot_arm"]]
+
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-            tau_comp = c_mat @ arm_dq + g_vec
+            tau_comp = np.zeros(dofs["sum"])
+            tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
             ik_q = traj_q_arr[traj_idx]
             mid_q, interp_flag = interp_arm(
                 cur_q,
                 ik_q,
                 grip_flag=False,
-                use_gripper=use_gripper,
+                dofs=dofs,
                 err_limit=init_limit if init_flag else runtime_limit,
             )
-            if use_gripper:
-                tau_comp = np.concatenate((tau_comp, np.zeros(1)), axis=0)
 
             tar_dq = np.zeros(mid_q.shape[0])
             if not interp_flag:
