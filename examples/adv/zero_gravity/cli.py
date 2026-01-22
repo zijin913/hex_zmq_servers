@@ -72,12 +72,12 @@ def main():
         if hexarm_states_hdr is not None:
             cur_q = hexarm_states[:, 0]
             cur_dq = hexarm_states[:, 1]
-            arm_q = cur_q[dofs["robot_arm"]]
-            arm_dq = cur_dq[dofs["robot_arm"]]
+            arm_q = cur_q[:dofs["robot_arm"]]
+            arm_dq = cur_dq[:dofs["robot_arm"]]
 
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
             tau_comp = np.zeros(dofs["sum"])
-            tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+            tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
             cmds = np.concatenate(
                 (cur_q.reshape(-1, 1), tau_comp.reshape(-1, 1)), axis=1)

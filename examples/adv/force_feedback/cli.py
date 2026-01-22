@@ -75,8 +75,8 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     if dofs["robot_gripper"] is not None:
-        comp_weight = comp_weight[dofs["robot_arm"]]
-        comp_deadzone = comp_deadzone[dofs["robot_arm"]]
+        comp_weight = comp_weight[:dofs["robot_arm"]]
+        comp_deadzone = comp_deadzone[:dofs["robot_arm"]]
 
     # work loop
     rate = HexRate(2e3)
@@ -93,12 +93,12 @@ def main():
             master_dq = master_states[:, 1]
 
             # calculate tau_comp
-            master_arm_q = master_q[dofs["robot_arm"]]
-            master_arm_dq = master_dq[dofs["robot_arm"]]
+            master_arm_q = master_q[:dofs["robot_arm"]]
+            master_arm_dq = master_dq[:dofs["robot_arm"]]
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(
                 master_arm_q, master_arm_dq)
             master_tau_comp = np.zeros(dofs["sum"])
-            master_tau_comp[dofs["robot_arm"]] = c_mat @ master_arm_dq + g_vec
+            master_tau_comp[:dofs["robot_arm"]] = c_mat @ master_arm_dq + g_vec
 
             if res_comp:
                 master_tau_comp -= deadzone(
@@ -122,16 +122,16 @@ def main():
             slave_eff = slave_states[:, 2]
 
             # calculate slave res vars
-            slave_arm_q = slave_q[dofs["robot_arm"]]
-            slave_arm_dq = slave_dq[dofs["robot_arm"]]
+            slave_arm_q = slave_q[:dofs["robot_arm"]]
+            slave_arm_dq = slave_dq[:dofs["robot_arm"]]
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(
                 slave_arm_q, slave_arm_dq)
             slave_tau_comp = np.zeros(dofs["sum"])
-            slave_tau_comp[dofs["robot_arm"]] = c_mat @ slave_arm_dq + g_vec
+            slave_tau_comp[:dofs["robot_arm"]] = c_mat @ slave_arm_dq + g_vec
 
             slave_res_eff = slave_eff.copy()
-            slave_res_eff[dofs["robot_arm"]] -= slave_tau_comp[
-                dofs["robot_arm"]]
+            slave_res_eff[:dofs["robot_arm"]] -= slave_tau_comp[
+                :dofs["robot_arm"]]
             slave_res_eff -= slave_tau_comp
 
             if master_q is not None:

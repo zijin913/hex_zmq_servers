@@ -89,11 +89,11 @@ def main():
             # left
             left_states_hdr, left_states = mujoco_client.get_states("left")
             if left_states_hdr is not None:
-                arm_q = left_states[:, 0][dofs["robot_arm"]]
-                arm_dq = left_states[:, 1][dofs["robot_arm"]]
+                arm_q = left_states[:dofs["robot_arm"], 0]
+                arm_dq = left_states[:dofs["robot_arm"], 1]
                 _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
                 tau_comp = np.zeros(dofs["sum"])
-                tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+                tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
                 if left_gello_cmds is not None:
                     cmds = np.concatenate(
                         (left_gello_cmds.reshape(-1, 1), tau_comp.reshape(
@@ -104,12 +104,12 @@ def main():
             # right
             right_states_hdr, right_states = mujoco_client.get_states("right")
             if right_states_hdr is not None:
-                arm_q = right_states[:, 0][dofs["robot_arm"]]
-                arm_dq = right_states[:, 1][dofs["robot_arm"]]
+                arm_q = right_states[:dofs["robot_arm"], 0]
+                arm_dq = right_states[:dofs["robot_arm"], 1]
 
                 _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
                 tau_comp = np.zeros(dofs["sum"])
-                tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+                tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
                 if right_gello_cmds is not None:
                     cmds = np.concatenate((right_gello_cmds.reshape(

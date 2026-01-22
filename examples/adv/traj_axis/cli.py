@@ -56,13 +56,13 @@ def interp_arm(cur_q,
                err_limit=0.05):
     mid_joint = np.zeros(dofs["sum"])
     mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
-        cur_q[dofs["robot_arm"]],
+        cur_q[:dofs["robot_arm"]],
         tar_joint,
         err_limit=err_limit,
     )
     if dofs["robot_gripper"] is not None:
-        mid_joint[dofs["robot_gripper"]], _ = interp_joint(
-            cur_q[dofs["robot_gripper"]],
+        mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
+            cur_q[-dofs["robot_gripper"]:],
             1.33 if grip_flag else 0.2,
             err_limit=err_limit,
         )
@@ -190,12 +190,12 @@ def main():
         if states_hdr is not None:
             cur_q = states[:, 0]
             cur_dq = states[:, 1]
-            arm_q = cur_q[dofs["robot_arm"]]
-            arm_dq = cur_dq[dofs["robot_arm"]]
+            arm_q = cur_q[:dofs["robot_arm"]]
+            arm_dq = cur_dq[:dofs["robot_arm"]]
 
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
             tau_comp = np.zeros(dofs["sum"])
-            tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+            tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
             ik_q = traj_q_arr[traj_idx]
             mid_q, interp_flag = interp_arm(

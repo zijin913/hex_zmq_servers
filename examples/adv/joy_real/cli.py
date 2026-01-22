@@ -168,13 +168,13 @@ def interp_arm(cur_q,
                err_limit=0.05):
     mid_joint = np.zeros(dofs["sum"])
     mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
-        cur_q[dofs["robot_arm"]],
+        cur_q[:dofs["robot_arm"]],
         tar_joint,
         err_limit=err_limit,
     )
     if dofs["robot_gripper"] is not None:
-        mid_joint[dofs["robot_gripper"]], _ = interp_joint(
-            cur_q[dofs["robot_gripper"]],
+        mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
+            cur_q[-dofs["robot_gripper"]:],
             1.33 if grip_flag else 0.2,
             err_limit=err_limit,
         )
@@ -252,12 +252,12 @@ def main():
         if hexarm_states_hdr is not None:
             cur_q = hexarm_states[:, 0]
             cur_dq = hexarm_states[:, 1]
-            arm_q = cur_q[dofs["robot_arm"]]
-            arm_dq = cur_dq[dofs["robot_arm"]]
+            arm_q = cur_q[:dofs["robot_arm"]]
+            arm_dq = cur_dq[:dofs["robot_arm"]]
 
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
             tau_comp = np.zeros(dofs["sum"])
-            tau_comp[dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+            tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
         if cur_q is not None:
             # update target pose
@@ -299,7 +299,7 @@ def main():
             else:
                 ik_success, ik_q, _ = dyn_util.inverse_kinematics(
                     (tar_pos, tar_quat),
-                    cur_q[dofs["robot_arm"]],
+                    cur_q[:dofs["robot_arm"]],
                 )
                 if ik_success:
                     mid_joint, interp_flag = interp_arm(
@@ -311,7 +311,7 @@ def main():
                     )
                 else:
                     tar_pos, tar_quat = dyn_util.forward_kinematics(
-                        cur_q[dofs["robot_arm"]])[-1]
+                        cur_q[:dofs["robot_arm"]])[-1]
 
             # set cmds
             cmds = np.concatenate(

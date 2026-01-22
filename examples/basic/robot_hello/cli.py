@@ -52,17 +52,18 @@ def main():
                 HEX_LOG_LEVEL["info"],
                 f"states_ts: {states_hdr['ts']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
-            hex_log(HEX_LOG_LEVEL["info"],
-                    f"states pos: {states[dofs['robot_arm'], 0]}")
-            hex_log(HEX_LOG_LEVEL["info"],
-                    f"states vel: {states[dofs['robot_arm'], 1]}")
+            arm_q = states[:dofs['robot_arm'], 0]
+            arm_dq = states[:dofs['robot_arm'], 1]
+            ctrl_q = states[-dofs['robot_arm']:, 0]
+            hex_log(HEX_LOG_LEVEL["info"], f"states pos: {arm_q}")
+            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {arm_dq}")
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"trigger: {states[dofs['robot_gripper'][0], 0]}; axis x: {states[dofs['robot_gripper'][1], 0]}; axis y: {states[dofs['robot_gripper'][2], 0]}"
+                f"trigger: {ctrl_q[0]}; axis x: {ctrl_q[1]}; axis y: {ctrl_q[2]}"
             )
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"btn a: {states[dofs['robot_gripper'][3], 0]}; btn b: {states[dofs['robot_gripper'][4], 0]}; btn x: {states[dofs['robot_gripper'][5], 0]}; btn y: {states[dofs['robot_gripper'][6], 0]}"
+                f"btn a: {ctrl_q[3]}; btn b: {ctrl_q[4]}; btn x: {ctrl_q[5]}; btn y: {ctrl_q[6]}"
             )
 
         rate.sleep()
