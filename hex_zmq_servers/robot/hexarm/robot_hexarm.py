@@ -18,7 +18,7 @@ from ...zmq_base import (
     HexRate,
 )
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
-from hex_device import HexDeviceApi, MotorBase
+from hex_device import HexDeviceApi, Arm, Hands
 from hex_device.motor_base import CommandType
 
 ROBOT_CONFIG = {
@@ -73,8 +73,8 @@ class HexRobotHexarm(HexRobotBase):
         # variables
         # hex_arm variables
         self.__hex_api: HexDeviceApi | None = None
-        self.__arm_archer: MotorBase | None = None
-        self.__gripper: MotorBase | None = None
+        self.__arm: Arm | None = None
+        self.__gripper: Hands | None = None
 
         # buffer
         self.__arm_state_buffer: dict | None = None
@@ -90,40 +90,47 @@ class HexRobotHexarm(HexRobotBase):
         while self.__hex_api.find_device_by_robot_type(arm_type) is None:
             print("\033[33mArm not found\033[0m")
             time.sleep(1)
-        self.__arm_archer = self.__hex_api.find_device_by_robot_type(arm_type)
-        self.__arm_archer.start()
-        self.__arm_dofs = len(self.__arm_archer)
-        self._limits = self.__arm_archer.get_joint_limits()
+        self.__arm = self.__hex_api.find_device_by_robot_type(arm_type)
+        self.__arm.start()
 
         # try to open gripper
-        self.__gripper_dofs = 0
-        self.__gripper = None
         if use_gripper:
             self.__gripper = self.__hex_api.find_optional_device_by_id(1)
-            if self.__gripper is not None:
-                self.__gripper_dofs = len(self.__gripper)
-                self._limits += [self.__gripper.get_joint_limits()]
-            else:
+            if self.__gripper is None:
                 print("\033[33mGripper not found\033[0m")
 
+        # variables init
+        arm_dofs = len(self.__arm)
+        self._dofs = [arm_dofs]
+        self._limits = np.array(self.__arm.get_joint_limits()).reshape(-1, 3, 2)
+        self.__motor_idx = {"robot_arm": np.arange(arm_dofs).tolist()}
+        if self.__gripper is not None:
+            gripper_dofs = len(self.__gripper)
+            self._dofs.append(gripper_dofs)
+            gripper_limits = np.array(self.__gripper.get_joint_limits()).reshape(-1, 3, 2)
+            self._limits = np.concatenate([self._limits, gripper_limits], axis=0)
+            self.__motor_idx["robot_gripper"] = (np.arange(gripper_dofs) +
+                                                 arm_dofs).tolist()
+
         # modify variables
-        self._dofs = [self.__arm_dofs + self.__gripper_dofs]
+        self._dofs = np.array(self._dofs)
+        self._dofs_sum = self._dofs.sum()
         self._limits = np.ascontiguousarray(np.asarray(self._limits)).reshape(
-            self._dofs[0], 3, 2)
+            self._dofs_sum, 3, 2)
         self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
         self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
-        if self.__mit_kp.shape[0] < self._dofs[0] or self.__mit_kd.shape[
-                0] < self._dofs[0]:
+        if self.__mit_kp.shape[0] < self._dofs_sum or self.__mit_kd.shape[
+                0] < self._dofs_sum:
             raise ValueError(
                 "The length of mit_kp and mit_kd must be greater than or equal to the number of motors"
             )
-        elif self.__mit_kp.shape[0] > self._dofs[0] or self.__mit_kd.shape[
-                0] > self._dofs[0]:
+        elif self.__mit_kp.shape[0] > self._dofs_sum or self.__mit_kd.shape[
+                0] > self._dofs_sum:
             print(
                 f"\033[33mThe length of mit_kp and mit_kd is greater than the number of motors\033[0m"
             )
-            self.__mit_kp = self.__mit_kp[:self._dofs[0]]
-            self.__mit_kd = self.__mit_kd[:self._dofs[0]]
+            self.__mit_kp = self.__mit_kp[:self._dofs_sum]
+            self.__mit_kd = self.__mit_kd[:self._dofs_sum]
 
         # start work loop
         self._working.set()
@@ -167,13 +174,12 @@ class HexRobotHexarm(HexRobotBase):
         self.close()
 
     def __get_states(self) -> tuple[np.ndarray | None, dict | None]:
-        if self.__arm_archer is None:
+        if self.__arm is None:
             return None, None
 
         # (arm_dofs, 3) # pos vel eff
         if self.__arm_state_buffer is None:
-            self.__arm_state_buffer = self.__arm_archer.get_simple_motor_status(
-            )
+            self.__arm_state_buffer = self.__arm.get_simple_motor_status()
 
         # (gripper_dofs, 3) # pos vel eff
         if self.__gripper is not None and self.__gripper_state_buffer is None:
@@ -220,24 +226,24 @@ class HexRobotHexarm(HexRobotBase):
         # [[pos_0, tor_0], ..., [pos_n, tor_n]]
         # cmds: (n, 5)
         # [[pos_0, vel_0, tor_0, kp_0, kd_0], ..., [pos_n, vel_n, tor_n, kp_n, kd_n]]
-        if self.__arm_archer is None:
+        if self.__arm is None:
             print("\033[91mArm not found\033[0m")
             return False
 
-        if cmds.shape[0] < self._dofs[0]:
+        if cmds.shape[0] < self._dofs_sum:
             print(
                 "\033[91mThe length of joint_angles must be greater than or equal to the number of motors\033[0m"
             )
             return False
-        elif cmds.shape[0] > self._dofs[0]:
+        elif cmds.shape[0] > self._dofs_sum:
             print(
                 f"\033[33mThe length of joint_angles is greater than the number of motors\033[0m"
             )
-            cmds = cmds[:self._dofs[0]]
+            cmds = cmds[:self._dofs_sum]
 
         cmd_pos = None
-        tar_vel = np.zeros(self._dofs[0])
-        cmd_tor = np.zeros(self._dofs[0])
+        tar_vel = np.zeros(self._dofs_sum)
+        cmd_tor = np.zeros(self._dofs_sum)
         cmd_kp = self.__mit_kp.copy()
         cmd_kd = self.__mit_kd.copy()
         if len(cmds.shape) == 1:
@@ -263,25 +269,25 @@ class HexRobotHexarm(HexRobotBase):
         )
 
         # arm
-        mit_cmd = self.__arm_archer.construct_mit_command(
-            tar_pos[:self.__arm_dofs],
-            tar_vel[:self.__arm_dofs],
-            cmd_tor[:self.__arm_dofs],
-            cmd_kp[:self.__arm_dofs],
-            cmd_kd[:self.__arm_dofs],
+        arm_cmd = self.__arm.construct_mit_command(
+            tar_pos[self.__motor_idx["robot_arm"]],
+            tar_vel[self.__motor_idx["robot_arm"]],
+            cmd_tor[self.__motor_idx["robot_arm"]],
+            cmd_kp[self.__motor_idx["robot_arm"]],
+            cmd_kd[self.__motor_idx["robot_arm"]],
         )
-        self.__arm_archer.motor_command(CommandType.MIT, mit_cmd)
+        self.__arm.motor_command(CommandType.MIT, arm_cmd)
 
         # gripper
         if self.__gripper is not None:
-            mit_cmd = self.__gripper.construct_mit_command(
-                tar_pos[self.__arm_dofs:],
-                tar_vel[self.__arm_dofs:],
-                cmd_tor[self.__arm_dofs:],
-                cmd_kp[self.__arm_dofs:],
-                cmd_kd[self.__arm_dofs:],
+            gripper_cmd = self.__gripper.construct_mit_command(
+                tar_pos[self.__motor_idx["robot_gripper"]],
+                tar_vel[self.__motor_idx["robot_gripper"]],
+                cmd_tor[self.__motor_idx["robot_gripper"]],
+                cmd_kp[self.__motor_idx["robot_gripper"]],
+                cmd_kd[self.__motor_idx["robot_gripper"]],
             )
-            self.__gripper.motor_command(CommandType.MIT, mit_cmd)
+            self.__gripper.motor_command(CommandType.MIT, gripper_cmd)
 
         return True
 
@@ -289,6 +295,6 @@ class HexRobotHexarm(HexRobotBase):
         if not self._working.is_set():
             return
         self._working.clear()
-        self.__arm_archer.stop()
+        self.__arm.stop()
         self.__hex_api.close()
         hex_log(HEX_LOG_LEVEL["info"], "HexRobotHexarm closed")

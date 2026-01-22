@@ -127,6 +127,7 @@ def create_traj_joint_arr(
     stop_num = int(traj_stop * hz)
     joint_num = dyn_util.get_joint_num()
     traj_q_list, traj_dq_list = [], []
+    start_q, end_q = INIT_JOINT.copy(), INIT_JOINT.copy()
     for traj_idx in range(pose_num):
         start_q = dyn_util.inverse_kinematics(
             tar_pose=(pt_pos_list[traj_idx], pt_quat_list[traj_idx]),
@@ -172,6 +173,8 @@ def create_traj_joint_arr(
                    5 * coeff_mat[5, :, None] * t_vec_arr[4]).T
         traj_q_list.append(traj_q)
         traj_dq_list.append(traj_dq)
+        
+        end_q = start_q.copy()
 
     traj_q_arr = np.concatenate(traj_q_list, axis=0)
     traj_dq_arr = np.concatenate(traj_dq_list, axis=0)

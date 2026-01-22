@@ -77,18 +77,37 @@ class HexMujocoE3Desktop(HexMujocoBase):
         mujoco.mj_resetData(self.__model, self.__data)
 
         # state init
-        self.__state_left_idx = [0, 1, 2, 3, 4, 5, 6]
-        self.__state_right_idx = [12, 13, 14, 15, 16, 17, 18]
-        self.__obj_pose_idx = [24, 25, 26, 27, 28, 29, 30]
-        self.__ctrl_left_idx = [0, 1, 2, 3, 4, 5, 6]
-        self.__ctrl_right_idx = [7, 8, 9, 10, 11, 12, 13]
-        self._limits = np.stack(
-            [
-                self.__model.jnt_range[self.__state_left_idx, :],
-                self.__model.jnt_range[self.__state_right_idx, :]
-            ],
-            axis=0,
-        )
+        self.__state_idx = {
+            "left_arm": [0, 1, 2, 3, 4, 5],
+            "left_gripper": [6],
+            "right_arm": [12, 13, 14, 15, 16, 17],
+            "right_gripper": [18],
+            "obj": [24, 25, 26, 27, 28, 29, 30],
+        }
+        self.__ctrl_idx = {
+            "left_arm": [0, 1, 2, 3, 4, 5],
+            "left_gripper": [6],
+            "right_arm": [7, 8, 9, 10, 11, 12],
+            "right_gripper": [13],
+        }
+        self.__limit_idx = {
+            "left_arm":
+            np.arange(len(self.__state_idx["left_arm"])).tolist(),
+            "left_gripper": (np.arange(len(self.__state_idx["left_gripper"])) +
+                             len(self.__state_idx["left_arm"])).tolist(),
+            "right_arm": (np.arange(len(self.__state_idx["right_arm"])) +
+                          len(self.__state_idx["left_arm"]) +
+                          len(self.__state_idx["left_gripper"])).tolist(),
+            "right_gripper":
+            (np.arange(len(self.__state_idx["right_gripper"])) +
+             len(self.__state_idx["left_arm"]) +
+             len(self.__state_idx["left_gripper"]) +
+             len(self.__state_idx["right_arm"])).tolist(),
+        }
+        self._limits = self.__model.jnt_range[np.concatenate([
+            self.__state_idx["left_arm"], self.__state_idx["left_gripper"],
+            self.__state_idx["right_arm"], self.__state_idx["right_gripper"]
+        ]), :].copy().reshape(-1, 1, 2)
         if not self.__tau_ctrl:
             self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
             self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
@@ -97,8 +116,10 @@ class HexMujocoE3Desktop(HexMujocoBase):
         self._limits[0, -1] *= self.__gripper_ratio
         self._limits[1, -1] *= self.__gripper_ratio
         self._dofs = np.array([
-            len(self.__state_left_idx),
-            len(self.__state_right_idx),
+            len(self.__state_idx["left_arm"]),
+            len(self.__state_idx["left_gripper"]),
+            len(self.__state_idx["right_arm"]),
+            len(self.__state_idx["right_gripper"]),
         ])
         keyframe_id = mujoco.mj_name2id(
             self.__model,
@@ -347,35 +368,47 @@ class HexMujocoE3Desktop(HexMujocoBase):
         pos = copy.deepcopy(self.__data.qpos)
         vel = copy.deepcopy(self.__data.qvel)
         eff = copy.deepcopy(self.__data.qfrc_actuator)
-        pos[self.__state_left_idx[-1]] = pos[
-            self.__state_left_idx[-1]] * self.__gripper_ratio
-        pos[self.__state_right_idx[-1]] = pos[
-            self.__state_right_idx[-1]] * self.__gripper_ratio
+        pos[self.__state_idx["left_gripper"]] = pos[
+            self.__state_idx["left_gripper"]] * self.__gripper_ratio
+        pos[self.__state_idx["right_gripper"]] = pos[
+            self.__state_idx["right_gripper"]] * self.__gripper_ratio
         return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
         ), np.array([
-            pos[self.__state_left_idx],
-            vel[self.__state_left_idx],
-            eff[self.__state_left_idx],
+            pos[self.__state_idx["left_arm"] +
+                self.__state_idx["left_gripper"]],
+            vel[self.__state_idx["left_arm"] +
+                self.__state_idx["left_gripper"]],
+            eff[self.__state_idx["left_arm"] +
+                self.__state_idx["left_gripper"]],
         ]).T, np.array([
-            pos[self.__state_right_idx],
-            vel[self.__state_right_idx],
-            eff[self.__state_right_idx],
-        ]).T, self.__data.qpos[self.__obj_pose_idx].copy()
+            pos[self.__state_idx["right_arm"] +
+                self.__state_idx["right_gripper"]],
+            vel[self.__state_idx["right_arm"] +
+                self.__state_idx["right_gripper"]],
+            eff[self.__state_idx["right_arm"] +
+                self.__state_idx["right_gripper"]],
+        ]).T, self.__data.qpos[self.__state_idx["obj"]].copy()
 
     def __set_cmds(self, cmds: np.ndarray, robot_name: str):
-        ctrl_idx = []
-        state_idx = []
+        state_idx = None
+        ctrl_idx = None
         limit_idx = None
         if robot_name == "left":
-            ctrl_idx = self.__ctrl_left_idx
+            ctrl_idx = self.__ctrl_idx["left_arm"] + self.__ctrl_idx[
+                "left_gripper"]
             if not self.__tau_ctrl:
-                state_idx = self.__state_left_idx
-                limit_idx = 0
+                state_idx = self.__state_idx["left_arm"] + self.__state_idx[
+                    "left_gripper"]
+                limit_idx = self.__limit_idx["left_arm"] + self.__limit_idx[
+                    "left_gripper"]
         elif robot_name == "right":
-            ctrl_idx = self.__ctrl_right_idx
+            ctrl_idx = self.__ctrl_idx["right_arm"] + self.__ctrl_idx[
+                "right_gripper"]
             if not self.__tau_ctrl:
-                state_idx = self.__state_right_idx
-                limit_idx = 1
+                state_idx = self.__state_idx["right_arm"] + self.__state_idx[
+                    "right_gripper"]
+                limit_idx = self.__limit_idx["right_arm"] + self.__limit_idx[
+                    "right_gripper"]
         else:
             raise ValueError(f"unknown robot name: {robot_name}")
         tau_cmds = None
@@ -404,8 +437,8 @@ class HexMujocoE3Desktop(HexMujocoBase):
                 raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
             tar_pos = self._apply_pos_limits(
                 cmd_pos,
-                self._limits[limit_idx, :, 0],
-                self._limits[limit_idx, :, 1],
+                self._limits[limit_idx, 0, 0],
+                self._limits[limit_idx, 0, 1],
             )
             tar_pos[-1] /= self.__gripper_ratio
             tau_cmds = self.__mit_ctrl(

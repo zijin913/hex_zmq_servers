@@ -46,11 +46,19 @@ def main():
     client = HexMujocoE3DesktopClient(net_config=net_config)
 
     # get dofs, limits and intri
-    dofs = client.get_dofs()
+    dof_arr = client.get_dofs()
+    dofs = {
+        "left_arm": dof_arr[0],
+        "left_gripper": dof_arr[1],
+        "right_arm": dof_arr[2],
+        "right_gripper": dof_arr[3],
+    }
     limits = client.get_limits()
     _, intri = client.get_intri()
+    assert limits.shape[0] == dof_arr.sum(
+    ), "The number of limits must be equal to the number of dofs"
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
 
     # get states, rgb and depth, and set cmds

@@ -9,7 +9,6 @@
 import argparse, json
 from hex_zmq_servers import (
     HexRate,
-    hex_ns_now,
     hex_zmq_ts_now,
     hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
@@ -35,7 +34,11 @@ def main():
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
 
-    dofs = client.get_dofs()[0]
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": dof_arr[0],
+        "robot_gripper": dof_arr[1],
+    }
     limits = client.get_limits()
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
     hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")

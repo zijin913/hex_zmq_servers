@@ -16,6 +16,11 @@ from hex_zmq_servers import (
 )
 from hex_robo_utils import HexDynUtil as DynUtil
 
+END_POSE = np.array(
+    [0.0, 0.0, 0.083, 0.7071068, 0.0, -0.7071068, 0.0],
+    dtype=np.float64,
+)
+
 
 def wait_client_working(client, timeout: float = 5.0) -> bool:
     for _ in range(int(timeout * 10)):
@@ -44,7 +49,7 @@ def main():
         raise ValueError(f"cfg is not valid, missing key: {missing_key}")
 
     hexarm_client = HexRobotHexarmClient(net_config=hexarm_net_cfg)
-    dyn_util = DynUtil(model_path, last_link)
+    dyn_util = DynUtil(model_path, last_link, end_pose=END_POSE)
 
     # wait servers to work
     if not wait_client_working(hexarm_client):
@@ -68,6 +73,9 @@ def main():
             cmds = np.concatenate(
                 (cur_q.reshape(-1, 1), tau_comp.reshape(-1, 1)), axis=1)
             hexarm_client.set_cmds(cmds)
+
+            pos, quat = dyn_util.forward_kinematics(arm_q)[-1]
+            print(f"pos: {pos}; quat: {quat}")
 
         rate.sleep()
 

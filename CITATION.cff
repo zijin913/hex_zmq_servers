@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "hex_zmq_servers"
+title: "Hex ZMQ Servers: A ZeroMQ-Based Embodied AI Communication Framework"
 message: "If you use this software in academic research, please cite it."
 type: software
 
