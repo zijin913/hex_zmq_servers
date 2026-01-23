@@ -20,23 +20,48 @@ robot_hexarm/
 
 - HexArm robot
 
-### Environment
-
-1. Find the robot IP address.
-
-2. (**Important**) Modify the `ARM_TYPE` and `GRIPPER_TYPE` in `launch.py` to match your device model before running the example.
-
-3. (**Important**) Modify the `DEVICE_IP` and `HEXARM_DEVICE_PORT` in `launch.py` to match your device port (e.g., `DEVICE_IP = "192.168.1.101"` and `HEXARM_DEVICE_PORT = 8439`) before running the example.
-   1. `CAN0` => `8439`
-   2. `CAN1` => `9439`
-
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/basic/robot_hexarm`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
 
-    ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    Modify the `ARM_TYPE`, `GRIPPER_TYPE`, `DEVICE_IP` and `HEXARM_DEVICE_PORT` in `launch.py` to match your device. `CAN0` => `8439`, `CAN1` => `9439`.
+
+    Assuming:
+    - The arm is `archer_y6` with `gp100` gripper
+    - The controller ip is `172.18.5.116`
+    - The arm is plugged into `CAN0`, which means the device port is `8439`
+
+    ```python
+    ...
+    ARM_TYPE = "archer_y6"
+    GRIPPER_TYPE = "gp100"
+    DEVICE_IP = "172.18.5.116"
+    HEXARM_DEVICE_PORT = 8439
+    ...
     ```
 
-- ⚠️ **Safety Notice**: This controls a real robot. Make sure there is enough safe space around the robot and you can cut off power at any time.
+2. Activate the virtual environment
+
+    ```bash
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
+    ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/basic/robot_hexarm
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
+    ```
+
+## Safety Notice
+
+- ⚠️ Make sure there is enough safe space around the robot and you can cut off power at any time.

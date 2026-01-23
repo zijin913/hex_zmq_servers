@@ -38,15 +38,22 @@ def main():
     client = HexMujocoArcherY6Client(net_config=net_config)
 
     # get dofs, limits and intri
-    dofs = client.get_dofs()
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
     limits = client.get_limits()
     _, intri = client.get_intri()
+    assert limits.shape[0] == dof_arr.sum(
+    ), "The number of limits must be equal to the number of dofs"
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
 
     # get states, rgb and depth, and set cmds
-    rate = HexRate(250)
+    rate = HexRate(2e3)
     try:
         while True:
             robot_states_hdr, robot_states = client.get_states("robot")
@@ -81,7 +88,7 @@ def main():
                 0.0,
                 0.5,
             ])
-            # hex_log(HEX_LOG_LEVEL["info"], f"cmds: {cmds}")
+            hex_log(HEX_LOG_LEVEL["info"], f"cmds: {cmds}")
             client.set_cmds(cmds)
 
             depth_hdr, depth_img = client.get_depth()

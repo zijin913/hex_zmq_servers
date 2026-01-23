@@ -6,7 +6,7 @@
 # Date  : 2025-09-25
 ################################################################
 
-import argparse, json, time
+import argparse, json
 from hex_zmq_servers import (
     HexRate,
     hex_zmq_ts_now,
@@ -34,10 +34,15 @@ def main():
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
 
-    dofs = client.get_dofs()[0]
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
     limits = client.get_limits()
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
 
     rate = HexRate(500)
     while True:

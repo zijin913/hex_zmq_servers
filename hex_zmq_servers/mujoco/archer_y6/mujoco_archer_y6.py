@@ -54,6 +54,7 @@ class HexMujocoArcherY6(HexMujocoBase):
         HexMujocoBase.__init__(self, realtime_mode)
 
         try:
+            self.__sim_rate = int(mujoco_config["control_hz"])
             states_rate = mujoco_config["states_rate"]
             img_rate = mujoco_config["img_rate"]
             self.__tau_ctrl = mujoco_config["tau_ctrl"]
@@ -71,24 +72,40 @@ class HexMujocoArcherY6(HexMujocoBase):
         model_path = os.path.join(os.path.dirname(__file__), "model/scene.xml")
         self.__model = mujoco.MjModel.from_xml_path(model_path)
         self.__data = mujoco.MjData(self.__model)
-        self.__sim_rate = int(1.0 / self.__model.opt.timestep)
+        self.__model.opt.timestep = 1.0 / self.__sim_rate
+        mujoco.mj_resetData(self.__model, self.__data)
 
         # state init
-        self.__state_robot_idx = [0, 1, 2, 3, 4, 5, 6]
-        self.__state_obj_idx = [12, 13, 14, 15, 16, 17, 18]
-        self.__ctrl_robot_idx = [0, 1, 2, 3, 4, 5, 6]
-        self.__ctrl_obj_idx = [0, 1, 2, 3, 4, 5, 6]
-        self._limits = np.stack(
-            [self.__model.jnt_range[self.__state_robot_idx, :]],
-            axis=0,
-        )
+        self.__state_idx = {
+            "robot_arm": ([0, 1, 2, 3, 4, 5]),
+            "robot_gripper": [6],
+            "obj": [12, 13, 14, 15, 16, 17, 18],
+        }
+        self.__ctrl_idx = {
+            "robot_arm": [0, 1, 2, 3, 4, 5],
+            "robot_gripper": [6],
+        }
+        self.__limit_idx = {
+            "robot_arm":
+            np.arange(len(self.__state_idx["robot_arm"])).tolist(),
+            "robot_gripper":
+            (np.arange(len(self.__state_idx["robot_gripper"])) +
+             len(self.__state_idx["robot_arm"])).tolist(),
+        }
+        print(f"self.__limit_idx: {self.__limit_idx}")
+        self._limits = self.__model.jnt_range[np.concatenate(
+            [self.__state_idx["robot_arm"], self.
+             __state_idx["robot_gripper"]]), :].copy().reshape(-1, 1, 2)
         if not self.__tau_ctrl:
             self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
             self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
             self.__mit_ctrl = CtrlUtil()
         self.__gripper_ratio = 1.33 / 1.52
         self._limits[0, -1] *= self.__gripper_ratio
-        self._dofs = np.array([len(self.__state_robot_idx)])
+        self._dofs = np.array([
+            len(self.__state_idx["robot_arm"]),
+            len(self.__state_idx["robot_gripper"])
+        ])
         keyframe_id = mujoco.mj_name2id(
             self.__model,
             mujoco.mjtObj.mjOBJ_KEY,
@@ -106,7 +123,7 @@ class HexMujocoArcherY6(HexMujocoBase):
 
         # camera init
         self.__img_trig_thresh = int(self.__sim_rate / img_rate)
-        self.__width, self.__height = 640, 400
+        self.__width, self.__height = (224, 224)
         fovy_rad = self.__model.cam_fovy[0] * np.pi / 180.0
         focal = 0.5 * self.__height / np.tan(fovy_rad / 2.0)
         self._intri = np.array(
@@ -179,13 +196,11 @@ class HexMujocoArcherY6(HexMujocoBase):
                 if states_robot is not None:
                     if hex_zmq_ts_delta_ms(ts, last_states_ts) > 1e-6:
                         last_states_ts = ts
-
                         # states robot
                         states_robot_queue.append(
                             (ts, states_robot_count, states_robot))
                         states_robot_count = (states_robot_count +
                                               1) % self._max_seq_num
-
                         # states obj
                         states_obj_queue.append(
                             (ts, states_obj_count, states_obj))
@@ -242,16 +257,25 @@ class HexMujocoArcherY6(HexMujocoBase):
         pos = copy.deepcopy(self.__data.qpos)
         vel = copy.deepcopy(self.__data.qvel)
         eff = copy.deepcopy(self.__data.qfrc_actuator)
-        pos[self.__state_robot_idx[-1]] = pos[
-            self.__state_robot_idx[-1]] * self.__gripper_ratio
+        pos[self.__state_idx["robot_gripper"]] = pos[
+            self.__state_idx["robot_gripper"]] * self.__gripper_ratio
         return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
         ), np.array([
-            pos[self.__state_robot_idx],
-            vel[self.__state_robot_idx],
-            eff[self.__state_robot_idx],
-        ]).T, self.__data.qpos[self.__state_obj_idx].copy()
+            pos[self.__state_idx["robot_arm"] +
+                self.__state_idx["robot_gripper"]],
+            vel[self.__state_idx["robot_arm"] +
+                self.__state_idx["robot_gripper"]],
+            eff[self.__state_idx["robot_arm"] +
+                self.__state_idx["robot_gripper"]],
+        ]).T, self.__data.qpos[self.__state_idx["obj"]].copy()
 
     def __set_cmds(self, cmds: np.ndarray):
+        state_idx = self.__state_idx["robot_arm"] + self.__state_idx[
+            "robot_gripper"]
+        ctrl_idx = self.__ctrl_idx["robot_arm"] + self.__ctrl_idx[
+            "robot_gripper"]
+        limit_idx = self.__limit_idx["robot_arm"] + self.__limit_idx[
+            "robot_gripper"]
         tau_cmds = None
         if not self.__tau_ctrl:
             cmd_pos = None
@@ -278,8 +302,8 @@ class HexMujocoArcherY6(HexMujocoBase):
                 raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
             tar_pos = self._apply_pos_limits(
                 cmd_pos,
-                self._limits[0, :, 0],
-                self._limits[0, :, 1],
+                self._limits[limit_idx, 0, 0],
+                self._limits[limit_idx, 0, 1],
             )
             tar_pos[-1] /= self.__gripper_ratio
             tau_cmds = self.__mit_ctrl(
@@ -287,13 +311,13 @@ class HexMujocoArcherY6(HexMujocoBase):
                 cmd_kd,
                 tar_pos,
                 tar_vel,
-                self.__data.qpos[self.__state_robot_idx],
-                self.__data.qvel[self.__state_robot_idx],
+                self.__data.qpos[state_idx],
+                self.__data.qvel[state_idx],
                 cmd_tor,
             )
         else:
             tau_cmds = cmds.copy()
-        self.__data.ctrl[self.__ctrl_robot_idx] = tau_cmds
+        self.__data.ctrl[ctrl_idx] = tau_cmds
 
     def __get_rgb(self):
         self.__rgb_cam.update_scene(self.__data, "end_camera")

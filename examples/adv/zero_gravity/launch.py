@@ -12,19 +12,15 @@ from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_l6y"
-GRIPPER_TYPE = "gp100_p050_handle"
-if GRIPPER_TYPE == "empty":
-    USE_GRIPPER = False
-else:
-    USE_GRIPPER = True
+ARM_TYPE = "firefly_y6"
+GRIPPER_TYPE = "empty"
 
 # server ports
 HEXARM_SRV_PORT = 12345
 
 # device config
-DEVICE_IP = "192.168.1.101"
-HEXARM_DEVICE_PORT = 9439
+DEVICE_IP = "172.18.5.116"
+HEXARM_DEVICE_PORT = 8439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,7 +34,6 @@ NODE_PARAMS_DICT = {
         f"{HEX_ZMQ_SERVERS_DIR}/../examples/adv/zero_gravity/cli.json",
         "cfg": {
             "model_path": HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
-            "use_gripper": USE_GRIPPER,
             "hexarm_net_cfg": {
                 "port": HEXARM_SRV_PORT,
             },
@@ -57,7 +52,6 @@ NODE_PARAMS_DICT = {
                 "device_port": HEXARM_DEVICE_PORT,
                 "control_hz": 500,
                 "arm_type": ARM_TYPE,
-                "use_gripper": USE_GRIPPER,
                 "mit_kp": [0.0] * 7,
                 "mit_kd": [0.0] * 7,
                 "sens_ts": True,

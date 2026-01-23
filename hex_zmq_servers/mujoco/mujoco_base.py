@@ -113,8 +113,8 @@ class HexMujocoClientBase(HexZMQClientBase):
             "obj": 0,
         }
         self._states_queue = {
-            "robot": deque(maxlen=self._max_seq_num),
-            "obj": deque(maxlen=self._max_seq_num),
+            "robot": deque(maxlen=self._deque_maxlen),
+            "obj": deque(maxlen=self._deque_maxlen),
         }
         self._camera_seq = {
             "rgb": 0,

@@ -1,61 +1,87 @@
-# hex_zmq_servers
+<h1 align="center">HEXFELLOW ZMQ SERVERS</h1>
 
-## Introduction
+<p align="center">
+    <a href="https://github.com/hexfellow/hex_zmq_servers/stargazers">
+        <img src="https://img.shields.io/github/stars/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
+    </a>
+    <a href="https://github.com/hexfellow/hex_zmq_servers/forks">
+        <img src="https://img.shields.io/github/forks/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
+    </a>
+    <a href="https://doi.org/10.5281/zenodo.18309954">
+        <img src="https://zenodo.org/badge/1088506315.svg" alt="DOI">
+    </a>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/hexfellow/hex_zmq_servers/issues">
+        <img src="https://img.shields.io/github/issues/hexfellow/hex_zmq_servers?style=flat-square&logo=github" />
+    </a>
+</p>
 
-**`hex_zmq_servers`** is a comprehensive distributed device control framework based on ZeroMQ, providing efficient client-server communication for HEXFELLOW devices.
+---
 
-## Project Structure
+# 📖 Overview
 
-```bash
-hex_zmq_servers/
-├── hex_zmq_servers/         # Core library
-│   ├── robot/               # Robot devices
-│   ├── cam/                 # Camera devices
-│   ├── mujoco/              # Mujoco simulation devices
-│   └── config/              # Default configuration files
-├── examples/                # Example code
-│   ├── basic/               # Basic examples (single device)
-│   └── adv/                 # Advanced examples (multi-device coordination)
-└── venv.sh                  # Virtual environment script
-```
+## What is `hex_zmq_servers`
 
-## Devices
+`hex_zmq_servers` provides a client–server layer on top of ZeroMQ to control and stream data from HEXFELLOW hardware (robots, RGB/RGB-D cameras) and MuJoCo-based simulators. Servers run device logic and command loops; clients send requests (e.g. `get_rgb`, `get_state`, `set_target`) and receive headers plus optional binary buffers (e.g. images, joint state).
 
-### Robot
+## What problem it solves
 
-- **dummy**: Dummy robot, for testing and development
-- **gello**: GELLO robot, based on Dynamixel servo
-- **hexarm**: HexArm robot of HEXFELLOW
+- **Decoupled control**: Run device drivers and control loops in separate processes; clients connect over TCP.
+- **Unified transport**: All devices use the same ZMQ request/response pattern (JSON header + NumPy buffer).
+- **Multi-node management**: `HexLaunch` and `HexNodeConfig` start and monitor multiple server/client nodes from one process.
 
-### Camera
+## Target users
 
-- **dummy**: Dummy camera, for testing and development
-- **berxel**: Berxel depth camera, providing RGB and depth images
+- Engineers integrating HEXFELLOW robots into their systems.
+- Researchers running experiments with HEXFELLOW robots.
 
-### Mujoco
+---
 
-- **archer_y6**: Physical simulation of Archer Y6 robot
-- **e3_desktop**: Physical simulation of E3 Desktop robot
+# 📦 Installation
 
-## Installation
+## Requirements
 
-### Install from PyPI
+- **Python**
+- **OS**: `Linux` / `macOS`
+- **Core dependencies**:
+  - `pyzmq`
+  - `hex_device`
+  - `hex_robo_utils`
+  - `opencv-python`
 
-1. For those who only want to use the library in their projects, it is recommended to install it from PyPI.
+Optional device support (install via extras):
+
+| Extra       | Purpose                                         |
+| ----------- | ----------------------------------------------- |
+| `berxel`    | Berxel RGB-D: `berxel_py_wrapper`               |
+| `realsense` | RealSense RGB-D: `pyrealsense2`                 |
+| `dynamixel` | Dynamixel: `dynamixel-sdk`                      |
+| `mujoco`    | MuJoCo sims: `mujoco`                           |
+| `all`       | `berxel` + `dynamixel` + `realsense` + `mujoco` |
+
+## Install from PyPI
+
+For those who don't need examples, you can install the package from PyPI.
+
+- **Full install**: includes all optional devices (Berxel, RealSense, Dynamixel, MuJoCo)
 
     ```bash
     pip install hex_zmq_servers[all]
     ```
 
-2. If you don't want to install the extra dependencies for extra devices, you can run:
+- **Core install**: only the core package (no optional devices)
 
     ```bash
     pip install hex_zmq_servers
     ```
 
-### Install from Source Code
+## Install from Source
 
-1. For those who want to test the examples or contribute to the project, you can install it from source code.
+For those who need examples, you can install the package from source code with examples.
+
+**Noet**: We use [**uv**](https://github.com/astral-sh/uv) to manage the Python environment. Please install it first.
+
+1. Clone and install in editable mode. The `venv.sh` script expects [uv](https://github.com/astral-sh/uv).
 
     ```bash
     git clone https://github.com/hexfellow/hex_zmq_servers.git
@@ -63,44 +89,57 @@ hex_zmq_servers/
     ./venv.sh
     ```
 
-2. If you don't want to install the extra dependencies for extra devices, you can run:
+   - `./venv.sh` — creates `.venv`, installs `hex_zmq_servers` with `[all]` and `examples/adv/requirements.txt` (e.g. `pygame` for some examples).
+   - `./venv.sh --min` — installs the core package only (no optional device extras). Some examples will not run.
+   - `./venv.sh --pkg-only` — installs the package only, skips example-related dependencies.
+
+2. Activate before running examples:
 
     ```bash
-    git clone https://github.com/hexfellow/hex_zmq_servers.git
-    cd hex_zmq_servers
-    ./venv.sh --min
+    source .venv/bin/activate
     ```
 
-    (**Important**) Some examples would not work without the extra dependencies.
+---
 
-3. If you don't want to install the examples, you can run:
+# 📚 Tutorial
 
-    ```bash
-    git clone https://github.com/hexfellow/hex_zmq_servers.git
-    cd hex_zmq_servers
-    ./venv.sh --pkg-only
-    ```
+See [**Tutorial**](docs/tutorial.md) for details of all tutorials.
 
-## Examples
+# 📑 API
 
-There are two types of examples in the project:
+See [**API**](docs/api.md) for details of all APIs.
 
-- **basic/**: Basic examples, showing the usage of a single device
-- **adv/**: Advanced examples, showing multi-device coordination
+# 💡 Example
 
-More details please refer to [examples/README.md](examples/README.md)
+See [**Example**](docs/example.md) for details of all examples.
 
-## Contributions
+---
 
-Welcome to submit issues and pull requests!
+# 🏷️ Citation
 
-## License
+If you want to cite this project in your work, you can use the following BibTeX entry:
 
-Apache License 2.0
+```bibtex
+@software{hex_zmq_servers,
+  author    = {Dong, Zhaorui},
+  title     = {Hex ZMQ Servers: A ZeroMQ-Based Embodied AI Communication Framework},
+  year      = {2025},
+  publisher = {Zenodo},
+  version   = {v1.0.0},
+  doi       = {10.5281/zenodo.18309960},
+  url       = {https://doi.org/10.5281/zenodo.18309960}
+}
+```
 
-## Contact
+---
 
-- Author: [Dong Zhaorui](https://github.com/IBNBlank)
-- Maintainer: [jecjune](https://github.com/Jecjune)
-- GitHub: [hex_zmq_servers](https://github.com/hexfellow/hex_zmq_servers)
-- Issue Tracker: [hex_zmq_servers](https://github.com/hexfellow/hex_zmq_servers/issues)
+# 📄 License
+
+Apache License 2.0. See [LICENSE](LICENSE).
+
+---
+
+# 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hexfellow/hex_zmq_servers&type=Date)](https://star-history.com/#hexfellow/hex_zmq_servers&Date)
+

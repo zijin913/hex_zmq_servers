@@ -47,8 +47,8 @@ class HexCamBerxel(HexCamBase):
 
         # variables
         # berxel variables
-        self.__context = None
-        self.__device = None
+        self.__context: BerxelHawkContext | None = None
+        self.__device: BerxelHawkDevice | None = None
         # camera variables
         self.__intri = np.zeros(4)
 
@@ -214,7 +214,15 @@ class HexCamBerxel(HexCamBase):
         return True
 
     def __start_stream(self):
-        self.__device.setColorExposureGain(self.__exposure, self.__gain)
+        if self.__serial_number.startswith('P008'):
+            self.__device.setSonixAEStatus(False)
+            self.__device.setSonixExposureTime(int(self.__exposure // 100))
+        else:
+            self.__device.setColorExposureGain(self.__exposure, self.__gain)
+        self.__device.setDepthElectricCurrent(700)
+        self.__device.setDepthAE(False)
+        self.__device.setDepthExposure(43)
+        self.__device.setDepthGain(1)
         self.__device.setRegistrationEnable(True)
         self.__device.setFrameSync(True)
         while self.__device.setSystemClock() != 0:

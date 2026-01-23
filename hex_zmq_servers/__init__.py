@@ -15,7 +15,6 @@ from .zmq_base import HexZMQDummyClient, HexZMQDummyServer
 
 from .robot import HexRobotBase, HexRobotClientBase, HexRobotServerBase
 from .robot import HexRobotDummy, HexRobotDummyClient, HexRobotDummyServer
-from .robot import HexRobotGello, HexRobotGelloClient, HexRobotGelloServer
 from .robot import HexRobotHexarm, HexRobotHexarmClient, HexRobotHexarmServer, HEXARM_URDF_PATH_DICT
 
 from .cam import HexCamBase, HexCamClientBase, HexCamServerBase
@@ -28,7 +27,6 @@ file_dir = os.path.dirname(os.path.abspath(__file__))
 HEX_ZMQ_SERVERS_PATH_DICT = {
     "zmq_dummy": f"{file_dir}/zmq_base.py",
     "robot_dummy": f"{file_dir}/robot/dummy/robot_dummy_srv.py",
-    "robot_gello": f"{file_dir}/robot/gello/robot_gello_srv.py",
     "robot_hexarm": f"{file_dir}/robot/hexarm/robot_hexarm_srv.py",
     "cam_dummy": f"{file_dir}/cam/dummy/cam_dummy_srv.py",
     "cam_rgb": f"{file_dir}/cam/rgb/cam_rgb_srv.py",
@@ -36,7 +34,6 @@ HEX_ZMQ_SERVERS_PATH_DICT = {
 HEX_ZMQ_CONFIGS_PATH_DICT = {
     "zmq_dummy": f"{file_dir}/config/zmq_dummy.json",
     "robot_dummy": f"{file_dir}/config/robot_dummy.json",
-    "robot_gello": f"{file_dir}/config/robot_gello.json",
     "robot_hexarm": f"{file_dir}/config/robot_hexarm.json",
     "cam_dummy": f"{file_dir}/config/cam_dummy.json",
     "cam_rgb": f"{file_dir}/config/cam_rgb.json",
@@ -80,9 +77,6 @@ __all__ = [
     "HexRobotDummy",
     "HexRobotDummyClient",
     "HexRobotDummyServer",
-    "HexRobotGello",
-    "HexRobotGelloClient",
-    "HexRobotGelloServer",
     "HexRobotHexarm",
     "HexRobotHexarmClient",
     "HexRobotHexarmServer",
@@ -104,6 +98,7 @@ from importlib.util import find_spec
 
 _HAS_BERXEL = find_spec("berxel_py_wrapper") is not None
 _HAS_REALSENSE = find_spec("pyrealsense2") is not None
+_HAS_DYNAMIXEL = find_spec("dynamixel-sdk") is not None
 _HAS_MUJOCO = find_spec("mujoco") is not None
 
 # Optional: berxel
@@ -138,6 +133,23 @@ if _HAS_REALSENSE:
         "HexCamRealsense",
         "HexCamRealsenseClient",
         "HexCamRealsenseServer",
+    ])
+
+# Optional: dynamixel
+if _HAS_DYNAMIXEL:
+    from .robot import HexRobotGello, HexRobotGelloClient, HexRobotGelloServer
+    HEX_ZMQ_SERVERS_PATH_DICT.update({
+        "robot_gello":
+        f"{file_dir}/robot/gello/robot_gello_srv.py",
+    })
+    HEX_ZMQ_CONFIGS_PATH_DICT.update({
+        "robot_gello":
+        f"{file_dir}/config/robot_gello.json",
+    })
+    __all__.extend([
+        "HexRobotGello",
+        "HexRobotGelloClient",
+        "HexRobotGelloServer",
     ])
 
 # Optional: mujoco

@@ -500,11 +500,16 @@ class HexZMQDummyClient(HexZMQClientBase):
         net_config: dict = NET_CONFIG,
     ):
         HexZMQClientBase.__init__(self, net_config)
-
+        self._wait_for_working()
+        
     def single_test(self):
         resp_hdr, resp_buf = self.request({"cmd": "test"})
-        print(f"resp_hdr: {resp_hdr}")
-        print(f"resp_buf: {resp_buf}")
+        return resp_hdr, resp_buf
+
+    def _recv_loop(self):
+        rate = HexRate(500)
+        while self._recv_flag:
+            rate.sleep()
 
 
 class HexZMQDummyServer(HexZMQServerBase):
@@ -524,6 +529,8 @@ class HexZMQDummyServer(HexZMQServerBase):
             self.close()
 
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):
+        if recv_hdr["cmd"] == "is_working":
+            return self.no_ts_hdr(recv_hdr, True), None
         if recv_hdr["cmd"] == "test":
             print("test received")
             print(f"recv_hdr: {recv_hdr}")
