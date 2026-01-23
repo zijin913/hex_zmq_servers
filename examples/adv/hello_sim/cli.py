@@ -30,6 +30,36 @@ def wait_client_working(client, timeout: float = 5.0) -> bool:
     return False
 
 
+def interp_joint(cur_q, tar_joint, err_limit=0.05):
+    err = tar_joint - cur_q
+    max_err_fab = np.fabs(err).max()
+    if max_err_fab < err_limit:
+        return tar_joint, False
+    else:
+        err_norm = err / max_err_fab
+        return cur_q + err_norm * err_limit, True
+
+
+def interp_arm(cur_q,
+               tar_joint,
+               grip_flag=True,
+               dofs: dict = None,
+               err_limit=0.05):
+    mid_joint = np.zeros(dofs["sum"])
+    mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
+        cur_q[:dofs["robot_arm"]],
+        tar_joint,
+        err_limit=err_limit,
+    )
+    if dofs["robot_gripper"] is not None:
+        mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
+            cur_q[-dofs["robot_gripper"]:],
+            1.33 if grip_flag else 0.2,
+            err_limit=err_limit,
+        )
+    return mid_joint, interp_flag
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", type=str, required=True)
@@ -60,46 +90,69 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "mujoco server is not working")
         return
 
-    dof_arr = hello_client.get_dofs()
-    dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-        "sum": dof_arr.sum(),
+    hello_dof_arr = hello_client.get_dofs()
+    hello_dofs = {
+        "robot_arm": int(hello_dof_arr[0]),
+        "robot_gripper":
+        int(hello_dof_arr[1]) if len(hello_dof_arr) > 1 else None,
+        "sum": int(hello_dof_arr.sum()),
     }
-    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+    hex_log(HEX_LOG_LEVEL["info"], f"hello dofs: {hello_dofs}")
 
-    dof_arr = mujoco_client.get_dofs()
-    dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-        "sum": dof_arr.sum(),
+    mujoco_dof_arr = mujoco_client.get_dofs()
+    mujoco_dofs = {
+        "robot_arm": int(mujoco_dof_arr[0]),
+        "robot_gripper":
+        int(mujoco_dof_arr[1]) if len(mujoco_dof_arr) > 1 else None,
+        "sum": int(mujoco_dof_arr.sum()),
     }
-    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+    hex_log(HEX_LOG_LEVEL["info"], f"mujoco dofs: {mujoco_dofs}")
 
     # work loop
-    rate = HexRate(250)
     hello_cmds = None
+    init_flag = True
+    init_limit = 0.03
+    runtime_limit = 0.1
+    rate = HexRate(250)
     try:
         while True:
             # gello
             hello_states_hdr, hello_states = hello_client.get_states()
             if hello_states_hdr is not None:
-                hello_cmds = hello_states.copy()
+                hello_cmds = hello_states[:mujoco_dofs["sum"], :-1].copy()
 
             # robot
             robot_states_hdr, robot_states = mujoco_client.get_states("robot")
             if robot_states_hdr is not None:
-                arm_q = robot_states[:dofs["robot_arm"], 0]
-                arm_dq = robot_states[:dofs["robot_arm"], 1]
+                cur_q = robot_states[:, 0]
+                cur_dq = robot_states[:, 1]
+                arm_q = cur_q[:mujoco_dofs["robot_arm"]]
+                arm_dq = cur_dq[:mujoco_dofs["robot_arm"]]
 
                 _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-                tau_comp = np.zeros(dofs["sum"])
-                tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+                tau_comp = np.zeros(mujoco_dofs["sum"])
+                tau_comp[:mujoco_dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
                 if hello_cmds is not None:
-                    cmds = np.zeros((dofs["sum"], 5))
-                    cmds[:, 0] = hello_cmds[:, 0]
-                    cmds[:, 1] = hello_cmds[:, 1]
+                    mid_q, interp_flag = interp_arm(
+                        cur_q,
+                        hello_cmds[:mujoco_dofs["robot_arm"], 0],
+                        grip_flag=hello_cmds[-1, 0] > 0.5,
+                        dofs=mujoco_dofs,
+                        err_limit=init_limit if init_flag else runtime_limit,
+                    )
+                    tar_dq = np.zeros(mujoco_dofs["sum"])
+                    if not interp_flag:
+                        if init_flag:
+                            init_flag = False
+                            print("init finished")
+                        tar_dq[:mujoco_dofs[
+                            "robot_arm"]] = hello_cmds[:mujoco_dofs[
+                                "robot_arm"], 1].copy()
+
+                    cmds = np.zeros((mujoco_dofs["sum"], 5))
+                    cmds[:, 0] = mid_q
+                    cmds[:, 1] = tar_dq
                     cmds[:, 2] = tau_comp
                     cmds[:, 3] = mit_kp
                     cmds[:, 4] = mit_kd

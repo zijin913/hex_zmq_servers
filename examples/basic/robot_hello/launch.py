@@ -11,7 +11,7 @@ from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
 # device config
-DEVICE_IP = "172.18.23.197"
+DEVICE_IP = "172.18.22.245"
 HEXARM_DEVICE_PORT = 8439
 
 # node params

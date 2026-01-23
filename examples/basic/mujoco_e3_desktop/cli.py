@@ -48,10 +48,12 @@ def main():
     # get dofs, limits and intri
     dof_arr = client.get_dofs()
     dofs = {
-        "left_arm": dof_arr[0],
-        "left_gripper": dof_arr[1],
-        "right_arm": dof_arr[2],
-        "right_gripper": dof_arr[3],
+        "left_arm": int(dof_arr[0]),
+        "left_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "right_arm": int(dof_arr[2]),
+        "right_gripper": int(dof_arr[3]) if len(dof_arr) > 3 else None,
+        "left_sum": int(dof_arr[0]) + int(dof_arr[1]),
+        "right_sum": int(dof_arr[2]) + int(dof_arr[3]),
     }
     limits = client.get_limits()
     _, intri = client.get_intri()
@@ -60,15 +62,6 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
     hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
-    
-    dof_arr = client.get_dofs()
-    dofs = {
-        "left_arm": dof_arr[0],
-        "left_gripper": dof_arr[1],
-        "right_arm": dof_arr[2],
-        "right_gripper": dof_arr[3],
-    }
-    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     # get states, rgb and depth, and set cmds
     rate = HexRate(2e3)

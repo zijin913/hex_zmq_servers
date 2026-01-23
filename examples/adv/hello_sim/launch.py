@@ -20,14 +20,14 @@ HELLO_SRV_PORT = 12345
 MUJOCO_SRV_PORT = 12346
 
 # device config
-DEVICE_IP = "172.18.5.116"
+DEVICE_IP = "172.18.22.245"
 HELLO_DEVICE_PORT = 8439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HEX_ZMQ_SERVERS_DIR = f"{SCRIPT_DIR}/../../../hex_zmq_servers"
-MIT_KP = [400.0, 400.0, 500.0, 200.0, 100.0, 100.0]
-MIT_KD = [5.0, 5.0, 5.0, 5.0, 2.0, 2.0]
+MIT_KP = [400.0, 400.0, 500.0, 200.0, 100.0, 100.0, 100.0]
+MIT_KD = [5.0, 5.0, 5.0, 5.0, 2.0, 2.0, 2.0]
 NODE_PARAMS_DICT = {
     "hello_sim_cli": {
         "name": "hello_sim_cli",

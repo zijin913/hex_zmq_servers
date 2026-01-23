@@ -15,6 +15,7 @@ from hex_zmq_servers import (
     hex_log,
     HexRobotHexarmClient,
 )
+from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
 
 
 def main():
@@ -31,13 +32,15 @@ def main():
 
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
+    plot_util = HexPlotUtil()
 
     # get dofs
     dof_arr = client.get_dofs()
+    print(dof_arr)
     dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-        "sum": dof_arr.sum(),
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
     }
     limits = client.get_limits()
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
@@ -54,17 +57,18 @@ def main():
             )
             arm_q = states[:dofs['robot_arm'], 0]
             arm_dq = states[:dofs['robot_arm'], 1]
-            ctrl_q = states[-dofs['robot_arm']:, 0]
-            hex_log(HEX_LOG_LEVEL["info"], f"states pos: {arm_q}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {arm_dq}")
-            hex_log(
-                HEX_LOG_LEVEL["info"],
-                f"trigger: {ctrl_q[0]}; axis x: {ctrl_q[1]}; axis y: {ctrl_q[2]}"
+            ctrl_q = states[-dofs["robot_gripper"]:, 0]
+            plot_dict = {
+                "pos": arm_q.tolist(),
+                "vel": arm_dq.tolist(),
+                "axis": ctrl_q[:3].tolist(),
+                "btn": ctrl_q[3:].tolist(),
+            }
+            plot_util.add_data(
+                name="hello",
+                data=plot_dict,
             )
-            hex_log(
-                HEX_LOG_LEVEL["info"],
-                f"btn a: {ctrl_q[3]}; btn b: {ctrl_q[4]}; btn x: {ctrl_q[5]}; btn y: {ctrl_q[6]}"
-            )
+            plot_util.send_data(clear=True)
 
         rate.sleep()
 

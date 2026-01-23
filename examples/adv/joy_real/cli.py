@@ -222,11 +222,10 @@ def main():
 
     dof_arr = hexarm_client.get_dofs()
     dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-        "sum": dof_arr.sum(),
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
     }
-    use_gripper = dofs["robot_gripper"] is not None
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     # work loop

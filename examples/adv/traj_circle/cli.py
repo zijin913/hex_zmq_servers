@@ -173,17 +173,17 @@ def main():
 
     dof_arr = client.get_dofs()
     dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-        "sum": dof_arr.sum(),
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
     }
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     traj_idx = 0
-    rate = HexRate(1000)
     init_flag = True
     init_limit = 0.03
     runtime_limit = 0.1
+    rate = HexRate(1000)
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:

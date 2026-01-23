@@ -40,8 +40,9 @@ def main():
     # get dofs, limits and intri
     dof_arr = client.get_dofs()
     dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1],
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
     }
     limits = client.get_limits()
     _, intri = client.get_intri()
@@ -50,13 +51,6 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
     hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
-
-    dof_arr = client.get_dofs()
-    dofs = {
-        "robot_arm": dof_arr[0],
-        "robot_gripper": dof_arr[1],
-    }
-    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
 
     # get states, rgb and depth, and set cmds
     rate = HexRate(2e3)
