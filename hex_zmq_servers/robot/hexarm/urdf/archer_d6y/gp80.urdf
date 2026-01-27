@@ -175,29 +175,28 @@
     </joint>
 
     <link name="link_6">
-    <inertial>
-      <origin xyz="0.00003207 0.00004116 0.04297674" rpy="0 0 0" />
-      <mass value="0.49758791" />
-      <inertia ixx="0.00043292" ixy="0.00000309" ixz="0.00000052"
-        iyy="0.00038073" iyz="0.00000073" izz="0.00025998" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://xpkg_urdf_archer_d6y/meshes/gp80.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="1 1 1 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://xpkg_urdf_archer_d6y/meshes/gp80.STL" />
-      </geometry>
-    </collision>
+        <inertial>
+            <origin xyz="0.00003207 0.00004116 0.04297674" rpy="0 0 0" />
+            <mass value="0.49758791" />
+            <inertia ixx="0.00043292" ixy="0.00000309" ixz="0.00000052"
+                iyy="0.00038073" iyz="0.00000073" izz="0.00025998" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://xpkg_urdf_archer_d6y/meshes/gp80.STL" />
+            </geometry>
+            <material name="">
+                <color rgba="1 1 1 1" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://xpkg_urdf_archer_d6y/meshes/gp80.STL" />
+            </geometry>
+        </collision>
     </link>
-
     <joint name="joint_6" type="revolute">
         <origin xyz="0.0553 0 0.029" rpy="0 0 0" />
         <parent link="link_5" />
