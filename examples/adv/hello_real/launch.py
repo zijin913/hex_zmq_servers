@@ -54,8 +54,8 @@ NODE_PARAMS_DICT = {
     },
     "robot_hello_srv": {
         "name": "robot_hello_srv",
-        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hexarm"],
-        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hexarm"],
+        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hello"],
+        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hello"],
         "cfg": {
             "net": {
                 "port": HELLO_SRV_PORT,
@@ -64,7 +64,6 @@ NODE_PARAMS_DICT = {
                 "device_ip": HELLO_DEVICE_IP,
                 "device_port": HELLO_DEVICE_PORT,
                 "control_hz": 500,
-                "arm_type": "hello",
                 "sens_ts": True,
             },
         },

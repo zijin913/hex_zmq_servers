@@ -13,7 +13,7 @@ from hex_zmq_servers import (
     HexRate,
     HEX_LOG_LEVEL,
     hex_log,
-    HexRobotHexarmClient,
+    HexRobotHelloClient,
     HexMujocoArcherY6Client,
 )
 from hex_robo_utils import HexDynUtil as DynUtil
@@ -78,7 +78,7 @@ def main():
         missing_key = ke.args[0]
         raise ValueError(f"cfg is not valid, missing key: {missing_key}")
 
-    hello_client = HexRobotHexarmClient(net_config=hello_net_cfg)
+    hello_client = HexRobotHelloClient(net_config=hello_net_cfg)
     mujoco_client = HexMujocoArcherY6Client(net_config=mujoco_net_cfg)
     dyn_util = DynUtil(model_path, last_link)
 
@@ -113,6 +113,7 @@ def main():
     init_flag = True
     init_limit = 0.03
     runtime_limit = 0.1
+    hello_client.set_rgbs(np.array([255, 255, 0]))
     rate = HexRate(250)
     try:
         while True:
@@ -146,6 +147,7 @@ def main():
                         if init_flag:
                             init_flag = False
                             print("init finished")
+                            hello_client.set_rgbs(np.array([0, 255, 0]))
                         tar_dq[:mujoco_dofs[
                             "robot_arm"]] = hello_cmds[:mujoco_dofs[
                                 "robot_arm"], 1].copy()

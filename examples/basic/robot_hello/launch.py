@@ -46,7 +46,6 @@ NODE_PARAMS_DICT = {
                 "device_ip": DEVICE_IP,
                 "device_port": HEXARM_DEVICE_PORT,
                 "control_hz": 500,
-                "arm_type": "hello",
                 "sens_ts": True,
             },
         },
