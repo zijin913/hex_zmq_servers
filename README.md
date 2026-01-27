@@ -121,7 +121,7 @@ If you want to cite this project in your work, you can use the following BibTeX 
 
 ```bibtex
 @software{hex_zmq_servers,
-  author    = {Dong, Zhaorui},
+  author    = {Dong, Zhaorui and Chen, Zejun},
   title     = {Hex ZMQ Servers: A ZeroMQ-Based Embodied AI Communication Framework},
   year      = {2025},
   publisher = {Zenodo},
@@ -143,3 +143,10 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 [![Star History Chart](https://api.star-history.com/svg?repos=hexfellow/hex_zmq_servers&type=Date)](https://star-history.com/#hexfellow/hex_zmq_servers&Date)
 
+---
+
+# 👥 Contributors
+
+<a href="https://github.com/hexfellow/hex_zmq_servers/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=hexfellow/hex_zmq_servers" />
+</a>

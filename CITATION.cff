@@ -8,6 +8,10 @@ authors:
     given-names: Zhaorui
     affiliation: Hexfellow Robotics
     email: dzr159@gmail.com
+  - family-names: Chen
+    given-names: Zejun
+    affiliation: Hexfellow Robotics
+    email: zejun.chen@hexfellow.com
 
 repository-code: https://github.com/hexfellow/hex_zmq_servers
 url: https://github.com/hexfellow/hex_zmq_servers
