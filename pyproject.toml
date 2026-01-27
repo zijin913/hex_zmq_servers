@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_zmq_servers"
-version = "1.0.0"
+version = "1.0.1"
 description = "HEXFELLOW ZMQ Servers"
 readme = "README.md"
 license = "Apache-2.0"
-authors = [{ name = "Dong Zhaorui", email = "joray.dong@hexfellow.com" }]
+authors = [{ name = "Dong Zhaorui", email = "dzr159@gmail.com" }]
 maintainers = [
   { name = "jecjune", email = "zejun.chen@hexfellow.com" },
-  { name = "Dong Zhaorui", email = "joray.dong@hexfellow.com" },
+  { name = "Dong Zhaorui", email = "dzr159@gmail.com" },
 ]
 keywords = ["hex_zmq_servers"]
 requires-python = ">=3.10"

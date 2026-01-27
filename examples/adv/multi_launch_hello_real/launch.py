@@ -8,7 +8,6 @@
 
 import os
 from hex_zmq_servers import HexLaunch, HexNodeConfig
-from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # node params
@@ -24,7 +23,7 @@ LAUNCH_PATH_DICT = {
 
 # robot model config
 ARM_TYPE = "archer_d6y"
-GRIPPER_TYPE = "gp100"
+GRIPPER_TYPE = "gp80"
 
 # hello_real 0
 HELLO_REAL_0_HELLO_SRV_PORT = 12345
@@ -41,10 +40,9 @@ HELLO_REAL_1_HELLO_DEVICE_PORT = 9439
 HELLO_REAL_1_HEXARM_DEVICE_IP = "172.18.16.228"
 HELLO_REAL_1_HEXARM_DEVICE_PORT = 9439
 
-# MIT control params
+# params
 MIT_KP = [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0]
 MIT_KD = [10.0, 10.0, 10.0, 6.0, 0.31, 0.31, 1.0]
-
 LAUNCH_PARAMS_DICT = {
     "hello_real_0": {
         "hello_real_cli": {

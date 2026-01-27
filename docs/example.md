@@ -52,4 +52,5 @@ This document shows how to use various devices and functions in `hex_zmq_servers
 | `multi_launch_realsense`      | Multi-launch RealSense                  | [examples/adv/multi_launch_realsense](../examples/adv/multi_launch_realsense/README.md)           |
 | `multi_launch_mujoco`         | Multi-launch Mujoco                     | [examples/adv/multi_launch_mujoco](../examples/adv/multi_launch_mujoco/README.md)                 |
 | `multi_launch_force_feedback` | Multi-launch force feedback teleop      | [examples/adv/multi_launch_force_feedback](../examples/adv/multi_launch_force_feedback/README.md) |
+| `multi_launch_hello_real`     | Multi-launch Hello real-world teleop    | [examples/adv/multi_launch_hello_real](../examples/adv/multi_launch_hello_real/README.md)         |
 | `multi_launch_zero_gravity`   | Multi-launch zero gravity (torque comp) | [examples/adv/multi_launch_zero_gravity](../examples/adv/multi_launch_zero_gravity/README.md)     |
