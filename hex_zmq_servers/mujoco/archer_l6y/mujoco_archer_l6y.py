@@ -30,7 +30,6 @@ from hex_robo_utils import HexCtrlUtilMitJoint as CtrlUtil
 MUJOCO_CONFIG = {
     "states_rate": 1000,
     "img_rate": 30,
-    "tau_ctrl": False,
     "mit_kp": [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0],
     "mit_kd": [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
     "headless": False,
@@ -56,7 +55,6 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         try:
             states_rate = mujoco_config["states_rate"]
             img_rate = mujoco_config["img_rate"]
-            self.__tau_ctrl = mujoco_config["tau_ctrl"]
             self.__mit_kp = mujoco_config["mit_kp"]
             self.__mit_kd = mujoco_config["mit_kd"]
             self.__cam_type = mujoco_config["cam_type"]
@@ -83,10 +81,9 @@ class HexMujocoArcherL6Y(HexMujocoBase):
             [self.__model.jnt_range[self.__state_robot_idx, :]],
             axis=0,
         )
-        if not self.__tau_ctrl:
-            self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
-            self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
-            self.__mit_ctrl = CtrlUtil()
+        self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
+        self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
+        self.__mit_ctrl = CtrlUtil()
         self.__gripper_ratio = 1.33 / 1.52
         self._limits[0, -1] *= self.__gripper_ratio
         self._dofs = np.array([len(self.__state_robot_idx)])
@@ -253,47 +250,43 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         ]).T, self.__data.qpos[self.__state_obj_idx].copy()
 
     def __set_cmds(self, cmds: np.ndarray):
-        tau_cmds = None
-        if not self.__tau_ctrl:
-            cmd_pos = None
-            tar_vel = np.zeros(cmds.shape[0])
-            cmd_tor = np.zeros(cmds.shape[0])
-            cmd_kp = self.__mit_kp.copy()
-            cmd_kd = self.__mit_kd.copy()
-            if len(cmds.shape) == 1:
-                cmd_pos = cmds
-            elif len(cmds.shape) == 2:
-                if cmds.shape[1] == 2:
-                    cmd_pos = cmds[:, 0].copy()
-                    cmd_tor = cmds[:, 1].copy()
-                elif cmds.shape[1] == 5:
-                    cmd_pos = cmds[:, 0].copy()
-                    tar_vel = cmds[:, 1].copy()
-                    cmd_tor = cmds[:, 2].copy()
-                    cmd_kp = cmds[:, 3].copy()
-                    cmd_kd = cmds[:, 4].copy()
-                else:
-                    raise ValueError(
-                        f"The shape of cmds is invalid: {cmds.shape}")
+        cmd_pos = None
+        tar_vel = np.zeros(cmds.shape[0])
+        cmd_tor = np.zeros(cmds.shape[0])
+        cmd_kp = self.__mit_kp.copy()
+        cmd_kd = self.__mit_kd.copy()
+        if len(cmds.shape) == 1:
+            cmd_pos = cmds
+        elif len(cmds.shape) == 2:
+            if cmds.shape[1] == 2:
+                cmd_pos = cmds[:, 0].copy()
+                cmd_tor = cmds[:, 1].copy()
+            elif cmds.shape[1] == 5:
+                cmd_pos = cmds[:, 0].copy()
+                tar_vel = cmds[:, 1].copy()
+                cmd_tor = cmds[:, 2].copy()
+                cmd_kp = cmds[:, 3].copy()
+                cmd_kd = cmds[:, 4].copy()
             else:
-                raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
-            tar_pos = self._apply_pos_limits(
-                cmd_pos,
-                self._limits[0, :, 0],
-                self._limits[0, :, 1],
-            )
-            tar_pos[-1] /= self.__gripper_ratio
-            tau_cmds = self.__mit_ctrl(
-                cmd_kp,
-                cmd_kd,
-                tar_pos,
-                tar_vel,
-                self.__data.qpos[self.__state_robot_idx],
-                self.__data.qvel[self.__state_robot_idx],
-                cmd_tor,
-            )
+                raise ValueError(
+                    f"The shape of cmds is invalid: {cmds.shape}")
         else:
-            tau_cmds = cmds.copy()
+            raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
+        tar_pos = self._apply_pos_limits(
+            cmd_pos,
+            self._limits[0, :, 0],
+            self._limits[0, :, 1],
+        )
+        tar_pos[-1] /= self.__gripper_ratio
+        tau_cmds = self.__mit_ctrl(
+            cmd_kp,
+            cmd_kd,
+            tar_pos,
+            tar_vel,
+            self.__data.qpos[self.__state_robot_idx],
+            self.__data.qvel[self.__state_robot_idx],
+            cmd_tor,
+        )
         self.__data.ctrl[self.__ctrl_robot_idx] = tau_cmds
 
     def __get_rgb(self):
