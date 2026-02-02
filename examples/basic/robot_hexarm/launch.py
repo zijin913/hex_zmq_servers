@@ -11,11 +11,11 @@ from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_l6y"
-GRIPPER_TYPE = "gp100_handle"
+ARM_TYPE = "firefly_y6"
+GRIPPER_TYPE = "empty"
 
 # device config
-DEVICE_IP = "172.18.23.197"
+DEVICE_IP = "172.18.22.245"
 HEXARM_DEVICE_PORT = 8439
 
 # node params

@@ -119,7 +119,7 @@ def main():
     hello_cmds = None
     init_flag = True
     init_limit = 0.03
-    runtime_limit = 0.1
+    runtime_limit = 0.2
     hello_client.set_rgbs(np.array([255, 255, 0]))
     rate = HexRate(500)
     while True:
