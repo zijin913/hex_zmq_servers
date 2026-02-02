@@ -100,13 +100,16 @@ class HexRobotHexarm(HexRobotBase):
         # variables init
         arm_dofs = len(self.__arm)
         self._dofs = [arm_dofs]
-        self._limits = np.array(self.__arm.get_joint_limits()).reshape(-1, 3, 2)
+        self._limits = np.array(self.__arm.get_joint_limits()).reshape(
+            -1, 3, 2)
         self.__motor_idx = {"robot_arm": np.arange(arm_dofs).tolist()}
         if self.__gripper is not None:
             gripper_dofs = len(self.__gripper)
             self._dofs.append(gripper_dofs)
-            gripper_limits = np.array(self.__gripper.get_joint_limits()).reshape(-1, 3, 2)
-            self._limits = np.concatenate([self._limits, gripper_limits], axis=0)
+            gripper_limits = np.array(
+                self.__gripper.get_joint_limits()).reshape(-1, 3, 2)
+            self._limits = np.concatenate([self._limits, gripper_limits],
+                                          axis=0)
             self.__motor_idx["robot_gripper"] = (np.arange(gripper_dofs) +
                                                  arm_dofs).tolist()
 

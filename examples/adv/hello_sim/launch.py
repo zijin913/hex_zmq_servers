@@ -20,7 +20,7 @@ HELLO_SRV_PORT = 12345
 MUJOCO_SRV_PORT = 12346
 
 # device config
-DEVICE_IP = "172.18.22.245"
+DEVICE_IP = "172.18.13.251"
 HELLO_DEVICE_PORT = 8439
 
 # node params
@@ -61,6 +61,7 @@ NODE_PARAMS_DICT = {
                 "device_ip": DEVICE_IP,
                 "device_port": HELLO_DEVICE_PORT,
                 "control_hz": 500,
+                "arm_type": ARM_TYPE,
                 "sens_ts": True,
             },
         },

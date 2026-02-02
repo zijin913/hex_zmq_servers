@@ -11,8 +11,8 @@ from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
 # device config
-DEVICE_IP = "172.18.22.245"
-HEXARM_DEVICE_PORT = 8439
+DEVICE_IP = "172.18.13.251"
+HELLO_DEVICE_PORT = 8439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,10 +33,10 @@ NODE_PARAMS_DICT = {
         },
     },
     # srv
-    "robot_hexarm_srv": {
-        "name": "robot_hexarm_srv",
-        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hexarm"],
-        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hexarm"],
+    "robot_hello_srv": {
+        "name": "robot_hello_srv",
+        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hello"],
+        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hello"],
         "cfg": {
             "net": {
                 "ip": "127.0.0.1",
@@ -44,8 +44,9 @@ NODE_PARAMS_DICT = {
             },
             "params": {
                 "device_ip": DEVICE_IP,
-                "device_port": HEXARM_DEVICE_PORT,
+                "device_port": HELLO_DEVICE_PORT,
                 "control_hz": 500,
+                "arm_type": "archer_y6",
                 "sens_ts": True,
             },
         },

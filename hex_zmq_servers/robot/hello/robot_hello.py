@@ -25,7 +25,16 @@ ROBOT_CONFIG = {
     "device_ip": "172.18.8.161",
     "device_port": 8439,
     "control_hz": 250,
+    "arm_type": "archer_y6",
     "sens_ts": True,
+}
+
+HELLO_DEVICE_TYPE_DICT = {
+    # 6 dof
+    "archer_y6": 26,
+    "archer_d6y": 26,
+    "archer_l6y": 26,
+    "firefly_y6": 26,
 }
 
 
@@ -42,6 +51,7 @@ class HexRobotHello(HexRobotBase):
             device_ip = robot_config["device_ip"]
             device_port = robot_config["device_port"]
             control_hz = robot_config["control_hz"]
+            arm_type = HELLO_DEVICE_TYPE_DICT[robot_config["arm_type"]]
             self.__sens_ts = robot_config["sens_ts"]
         except KeyError as ke:
             missing_key = ke.args[0]
@@ -65,17 +75,17 @@ class HexRobotHello(HexRobotBase):
         )
 
         # open arm
-        while self.__hex_api.find_device_by_robot_type(26) is None:
+        while self.__hex_api.find_device_by_robot_type(arm_type) is None:
             print("\033[33mArm not found\033[0m")
             time.sleep(1)
-        self.__arm = self.__hex_api.find_device_by_robot_type(26)
+        self.__arm = self.__hex_api.find_device_by_robot_type(arm_type)
         self.__arm.start()
 
         # try to open gripper
         self.__gripper = self.__hex_api.find_optional_device_by_id(1)
         if self.__gripper is None:
             print("\033[33mGripper not found\033[0m")
-        self.__gripper.set_rgb_stripe_command([0], [255], [0])
+        self.__gripper.set_rgb_stripe_command([0] * 6, [255] * 6, [0] * 6)
 
         # variables init
         arm_dofs = len(self.__arm)
@@ -279,6 +289,7 @@ class HexRobotHello(HexRobotBase):
                 print("\033[91mThe shape of rgbs is invalid\033[0m")
                 return False
             rgbs_int = rgbs_int.reshape(1, 3)
+            rgbs_int = np.tile(rgbs_int, (6, 1))
         elif rgbs_dim == 2 and rgbs_shape[1] != 3:
             print("\033[91mThe shape of rgbs is invalid\033[0m")
             return False
@@ -294,7 +305,7 @@ class HexRobotHello(HexRobotBase):
         if not self._working.is_set():
             return
         self._working.clear()
-        self.__gripper.set_rgb_stripe_command([255], [0], [0])
+        self.__gripper.set_rgb_stripe_command([255] * 6, [0] * 6, [0] * 6)
         time.sleep(0.2)
         self.__arm.stop()
         self.__hex_api.close()
