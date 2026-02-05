@@ -34,7 +34,6 @@ This document lists servers, clients, and utility functions in `hex_zmq_servers`
     rate.sleep()
   ```
 
-
 ---
 
 # Devices
@@ -179,6 +178,28 @@ This document lists servers, clients, and utility functions in `hex_zmq_servers`
 
 - Usage:
   See [examples/basic/robot_dummy](../examples/basic/robot_dummy/README.md) for details.
+
+### Hello Robot
+
+- Hello robot client extra api:
+
+    | Function                     | Description        |
+    | ---------------------------- | ------------------ |
+    | `set_rgbs(rgbs: np.ndarray)` | Set the RGB image. |
+
+- Hello robot server parameters:
+
+    ```python
+    "params": {
+        "device_ip": str,
+        "device_port": int,
+        "control_hz": int,
+        "sens_ts": bool
+    }
+    ```
+
+- Usage:
+  See [examples/basic/robot_hello](../examples/basic/robot_hello/README.md) for details.
 
 ### HexArm Robot
 

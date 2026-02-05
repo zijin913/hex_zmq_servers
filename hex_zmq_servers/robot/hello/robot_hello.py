@@ -26,21 +26,19 @@ ROBOT_CONFIG = {
     "device_port": 8439,
     "control_hz": 250,
     "arm_type": "archer_y6",
-    "mit_kp": [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0],
-    "mit_kd": [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
     "sens_ts": True,
 }
 
-HEX_DEVICE_TYPE_DICT = {
-    "archer_y6": 25,
-    "archer_d6y": 16,
-    "archer_l6y": 17,
-    "firefly_y6": 27,
-    "hello": 26,
+HELLO_DEVICE_TYPE_DICT = {
+    # 6 dof
+    "archer_y6": 26,
+    "archer_d6y": 26,
+    "archer_l6y": 26,
+    "firefly_y6": 26,
 }
 
 
-class HexRobotHexarm(HexRobotBase):
+class HexRobotHello(HexRobotBase):
 
     def __init__(
         self,
@@ -53,21 +51,12 @@ class HexRobotHexarm(HexRobotBase):
             device_ip = robot_config["device_ip"]
             device_port = robot_config["device_port"]
             control_hz = robot_config["control_hz"]
-            arm_type = HEX_DEVICE_TYPE_DICT[robot_config["arm_type"]]
+            arm_type = HELLO_DEVICE_TYPE_DICT[robot_config["arm_type"]]
             self.__sens_ts = robot_config["sens_ts"]
         except KeyError as ke:
             missing_key = ke.args[0]
             raise ValueError(
                 f"robot_config is not valid, missing key: {missing_key}")
-
-        self.__mit_kp = robot_config.get(
-            "mit_kp",
-            [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0],
-        )
-        self.__mit_kd = robot_config.get(
-            "mit_kd",
-            [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
-        )
 
         # variables
         # hex_arm variables
@@ -96,6 +85,7 @@ class HexRobotHexarm(HexRobotBase):
         self.__gripper = self.__hex_api.find_optional_device_by_id(1)
         if self.__gripper is None:
             print("\033[33mGripper not found\033[0m")
+        self.__gripper.set_rgb_stripe_command([0] * 6, [255] * 6, [0] * 6)
 
         # variables init
         arm_dofs = len(self.__arm)
@@ -118,32 +108,20 @@ class HexRobotHexarm(HexRobotBase):
         self._dofs_sum = self._dofs.sum()
         self._limits = np.ascontiguousarray(np.asarray(self._limits)).reshape(
             self._dofs_sum, 3, 2)
-        self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
-        self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
-        if self.__mit_kp.shape[0] < self._dofs_sum or self.__mit_kd.shape[
-                0] < self._dofs_sum:
-            raise ValueError(
-                "The length of mit_kp and mit_kd must be greater than or equal to the number of motors"
-            )
-        elif self.__mit_kp.shape[0] > self._dofs_sum or self.__mit_kd.shape[
-                0] > self._dofs_sum:
-            print(
-                f"\033[33mThe length of mit_kp and mit_kd is greater than the number of motors\033[0m"
-            )
-            self.__mit_kp = self.__mit_kp[:self._dofs_sum]
-            self.__mit_kd = self.__mit_kd[:self._dofs_sum]
 
         # start work loop
         self._working.set()
 
     def work_loop(self, hex_queues: list[deque | threading.Event]):
         states_queue = hex_queues[0]
-        cmds_queue = hex_queues[1]
+        rgbs_queue = hex_queues[1]
         stop_event = hex_queues[2]
 
         last_states_ts = hex_zmq_ts_now()
         states_count = 0
-        last_cmds_seq = -1
+        cmds_count = 0
+        cmds = np.zeros((self._dofs_sum, 5))
+        last_rgbs_seq = -1
         rate = HexRate(2000)
         while self._working.is_set() and not stop_event.is_set():
             # states
@@ -155,18 +133,24 @@ class HexRobotHexarm(HexRobotBase):
                     states_count = (states_count + 1) % self._max_seq_num
 
             # cmds
-            cmds_pack = None
+            cmds_count += 1
+            if cmds_count >= 1000:
+                cmds_count = 0
+                self.__set_cmds(cmds)
+
+            # rgbs
+            rgbs_pack = None
             try:
-                cmds_pack = cmds_queue[
-                    -1] if self._realtime_mode else cmds_queue.popleft()
+                rgbs_pack = rgbs_queue[
+                    -1] if self._realtime_mode else rgbs_queue.popleft()
             except IndexError:
                 pass
-            if cmds_pack is not None:
-                ts, seq, cmds = cmds_pack
-                if seq != last_cmds_seq:
-                    last_cmds_seq = seq
+            if rgbs_pack is not None:
+                ts, seq, rgbs = rgbs_pack
+                if seq != last_rgbs_seq:
+                    last_rgbs_seq = seq
                     if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
-                        self.__set_cmds(cmds)
+                        self.__set_rgbs(rgbs)
 
             # sleep
             rate.sleep()
@@ -245,8 +229,8 @@ class HexRobotHexarm(HexRobotBase):
         cmd_pos = None
         tar_vel = np.zeros(self._dofs_sum)
         cmd_tor = np.zeros(self._dofs_sum)
-        cmd_kp = self.__mit_kp.copy()
-        cmd_kd = self.__mit_kd.copy()
+        cmd_kp = np.zeros(self._dofs_sum)
+        cmd_kd = np.zeros(self._dofs_sum)
         if len(cmds.shape) == 1:
             cmd_pos = cmds
         elif len(cmds.shape) == 2:
@@ -292,10 +276,37 @@ class HexRobotHexarm(HexRobotBase):
 
         return True
 
+    def __set_rgbs(self, rgbs: np.ndarray) -> bool:
+        if self.__gripper is None:
+            print("\033[91mGripper not found\033[0m")
+            return False
+
+        rgbs_int = rgbs.astype(int)
+        rgbs_shape = rgbs_int.shape
+        rgbs_dim = len(rgbs_shape)
+        if rgbs_dim == 1:
+            if rgbs_shape[0] != 3:
+                print("\033[91mThe shape of rgbs is invalid\033[0m")
+                return False
+            rgbs_int = rgbs_int.reshape(1, 3)
+            rgbs_int = np.tile(rgbs_int, (6, 1))
+        elif rgbs_dim == 2 and rgbs_shape[1] != 3:
+            print("\033[91mThe shape of rgbs is invalid\033[0m")
+            return False
+
+        self.__gripper.set_rgb_stripe_command(
+            rgbs_int[:, 0].tolist(),
+            rgbs_int[:, 1].tolist(),
+            rgbs_int[:, 2].tolist(),
+        )
+        return True
+
     def close(self):
         if not self._working.is_set():
             return
         self._working.clear()
+        self.__gripper.set_rgb_stripe_command([255] * 6, [0] * 6, [0] * 6)
+        time.sleep(0.2)
         self.__arm.stop()
         self.__hex_api.close()
-        hex_log(HEX_LOG_LEVEL["info"], "HexRobotHexarm closed")
+        hex_log(HEX_LOG_LEVEL["info"], "HexRobotHello closed")

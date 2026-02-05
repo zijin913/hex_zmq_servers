@@ -15,6 +15,7 @@ from hex_zmq_servers import (
     hex_log,
     HexRobotHexarmClient,
 )
+from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
 
 import numpy as np
 
@@ -33,6 +34,7 @@ def main():
 
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
+    plot_util = HexPlotUtil()
 
     dof_arr = client.get_dofs()
     dofs = {
@@ -53,9 +55,17 @@ def main():
                 HEX_LOG_LEVEL["info"],
                 f"states_seq: {states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
-            hex_log(HEX_LOG_LEVEL["info"], f"states pos: {states[:, 0]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {states[:, 1]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states eff: {states[:, 2]}")
+            arm_q = states[:dofs['robot_arm'], 0]
+            arm_dq = states[:dofs['robot_arm'], 1]
+            plot_dict = {
+                "pos": arm_q.tolist(),
+                "vel": arm_dq.tolist(),
+            }
+            plot_util.add_data(
+                name="hexarm",
+                data=plot_dict,
+            )
+            plot_util.send_data(clear=True)
 
         cmds = np.array([
             0.2,
@@ -66,7 +76,7 @@ def main():
             0.0,
             0.5,
         ])
-        client.set_cmds(cmds)
+        client.set_cmds(cmds[:dofs['sum']])
 
         rate.sleep()
 
