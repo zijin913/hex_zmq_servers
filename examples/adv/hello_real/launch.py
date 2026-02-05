@@ -12,17 +12,17 @@ from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_d6y"
-GRIPPER_TYPE = "gp100"
+ARM_TYPE = "firefly_y6"
+GRIPPER_TYPE = "empty"
 
 # server ports
 HELLO_SRV_PORT = 12345
 HEXARM_SRV_PORT = 12346
 
 # device config
-HELLO_DEVICE_IP = "172.18.13.174"
+HELLO_DEVICE_IP = "172.18.13.251"
 HELLO_DEVICE_PORT = 8439
-HEXARM_DEVICE_IP = "172.18.16.228"
+HEXARM_DEVICE_IP = "172.18.22.245"
 HEXARM_DEVICE_PORT = 8439
 
 # node params
@@ -54,8 +54,8 @@ NODE_PARAMS_DICT = {
     },
     "robot_hello_srv": {
         "name": "robot_hello_srv",
-        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hexarm"],
-        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hexarm"],
+        "node_path": HEX_ZMQ_SERVERS_PATH_DICT["robot_hello"],
+        "cfg_path": HEX_ZMQ_CONFIGS_PATH_DICT["robot_hello"],
         "cfg": {
             "net": {
                 "port": HELLO_SRV_PORT,
@@ -64,7 +64,7 @@ NODE_PARAMS_DICT = {
                 "device_ip": HELLO_DEVICE_IP,
                 "device_port": HELLO_DEVICE_PORT,
                 "control_hz": 500,
-                "arm_type": "hello",
+                "arm_type": ARM_TYPE,
                 "sens_ts": True,
             },
         },

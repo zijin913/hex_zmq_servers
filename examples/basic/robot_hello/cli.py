@@ -13,7 +13,7 @@ from hex_zmq_servers import (
     hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
-    HexRobotHexarmClient,
+    HexRobotHelloClient,
 )
 from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
 
@@ -31,7 +31,7 @@ def main():
         raise ValueError(f"cfg is not valid, missing key: {missing_key}")
 
     # robot client
-    client = HexRobotHexarmClient(net_config=net_config)
+    client = HexRobotHelloClient(net_config=net_config)
     plot_util = HexPlotUtil()
 
     # get dofs

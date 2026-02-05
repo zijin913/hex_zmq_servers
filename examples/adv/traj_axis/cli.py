@@ -183,7 +183,7 @@ def main():
     traj_idx = 0
     init_flag = True
     init_limit = 0.03
-    runtime_limit = 0.1
+    runtime_limit = 0.2
     rate = HexRate(1000)
     while True:
         states_hdr, states = client.get_states()

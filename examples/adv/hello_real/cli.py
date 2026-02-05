@@ -12,6 +12,7 @@ from hex_zmq_servers import (
     HexRate,
     HEX_LOG_LEVEL,
     hex_log,
+    HexRobotHelloClient,
     HexRobotHexarmClient,
 )
 from hex_robo_utils import HexDynUtil as DynUtil
@@ -40,7 +41,7 @@ def interp_joint(cur_q, tar_joint, err_limit=0.05):
 
 def interp_arm(cur_q,
                tar_joint,
-               grip_flag=True,
+               grip_tar=None,
                dofs: dict = None,
                err_limit=0.05):
     mid_joint = np.zeros(dofs["sum"])
@@ -49,10 +50,10 @@ def interp_arm(cur_q,
         tar_joint,
         err_limit=err_limit,
     )
-    if dofs["robot_gripper"] is not None:
+    if grip_tar is not None:
         mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
             cur_q[-dofs["robot_gripper"]:],
-            1.33 if grip_flag else 0.2,
+            grip_tar,
             err_limit=err_limit,
         )
     return mid_joint, interp_flag
@@ -76,7 +77,7 @@ def main():
         missing_key = ke.args[0]
         raise ValueError(f"cfg is not valid, missing key: {missing_key}")
 
-    hello_client = HexRobotHexarmClient(net_config=hello_net_cfg)
+    hello_client = HexRobotHelloClient(net_config=hello_net_cfg)
     hexarm_client = HexRobotHexarmClient(net_config=hexarm_net_cfg)
     dyn_util = DynUtil(model_path, last_link)
 
@@ -105,12 +106,21 @@ def main():
         "sum": int(hexarm_dof_arr.sum()),
     }
     hex_log(HEX_LOG_LEVEL["info"], f"hexarm dofs: {hexarm_dofs}")
+    hexarm_limits = hexarm_client.get_limits()
+    hex_log(HEX_LOG_LEVEL["info"], f"hexarm limits: {hexarm_limits.shape}")
+    gripper_k, gripper_d = None, None
+    if hexarm_dofs["robot_gripper"] is not None:
+        gripper_limit = hexarm_limits[-hexarm_dofs["robot_gripper"]:,
+                                      0, :].reshape(-1, 2)
+        gripper_k = (gripper_limit[:, 1] - gripper_limit[:, 0]) / 2.0
+        gripper_d = gripper_limit[:, 1] - gripper_k
 
     # work loop
     hello_cmds = None
     init_flag = True
     init_limit = 0.03
-    runtime_limit = 0.1
+    runtime_limit = 0.2
+    hello_client.set_rgbs(np.array([255, 255, 0]))
     rate = HexRate(500)
     while True:
         # gello
@@ -131,10 +141,14 @@ def main():
             tau_comp[:hexarm_dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
             if hello_cmds is not None:
+                grip_tar = None
+                if hexarm_dofs["robot_gripper"] is not None:
+                    grip_tar = gripper_d + gripper_k * hello_cmds[
+                        -hexarm_dofs["robot_gripper"]:, 0].copy()
                 mid_q, interp_flag = interp_arm(
                     cur_q,
                     hello_cmds[:hexarm_dofs["robot_arm"], 0],
-                    grip_flag=hello_cmds[-1, 0] > 0.5,
+                    grip_tar=grip_tar,
                     dofs=hexarm_dofs,
                     err_limit=init_limit if init_flag else runtime_limit,
                 )
@@ -143,6 +157,7 @@ def main():
                     if init_flag:
                         init_flag = False
                         print("init finished")
+                        hello_client.set_rgbs(np.array([0, 255, 0]))
                     tar_dq[:hexarm_dofs[
                         "robot_arm"]] = hello_cmds[:hexarm_dofs["robot_arm"],
                                                    1].copy()
@@ -151,8 +166,8 @@ def main():
                 cmds[:, 0] = mid_q
                 cmds[:, 1] = tar_dq
                 cmds[:, 2] = tau_comp
-                cmds[:, 3] = mit_kp
-                cmds[:, 4] = mit_kd
+                cmds[:, 3] = mit_kp[:hexarm_dofs["sum"]]
+                cmds[:, 4] = mit_kd[:hexarm_dofs["sum"]]
                 hexarm_client.set_cmds(cmds)
 
         rate.sleep()

@@ -15,6 +15,7 @@ from .zmq_base import HexZMQDummyClient, HexZMQDummyServer
 
 from .robot import HexRobotBase, HexRobotClientBase, HexRobotServerBase
 from .robot import HexRobotDummy, HexRobotDummyClient, HexRobotDummyServer
+from .robot import HexRobotHello, HexRobotHelloClient, HexRobotHelloServer
 from .robot import HexRobotHexarm, HexRobotHexarmClient, HexRobotHexarmServer, HEXARM_URDF_PATH_DICT
 
 from .cam import HexCamBase, HexCamClientBase, HexCamServerBase
@@ -28,6 +29,7 @@ HEX_ZMQ_SERVERS_PATH_DICT = {
     "zmq_dummy": f"{file_dir}/zmq_base.py",
     "robot_dummy": f"{file_dir}/robot/dummy/robot_dummy_srv.py",
     "robot_hexarm": f"{file_dir}/robot/hexarm/robot_hexarm_srv.py",
+    "robot_hello": f"{file_dir}/robot/hello/robot_hello_srv.py",
     "cam_dummy": f"{file_dir}/cam/dummy/cam_dummy_srv.py",
     "cam_rgb": f"{file_dir}/cam/rgb/cam_rgb_srv.py",
 }
@@ -35,6 +37,7 @@ HEX_ZMQ_CONFIGS_PATH_DICT = {
     "zmq_dummy": f"{file_dir}/config/zmq_dummy.json",
     "robot_dummy": f"{file_dir}/config/robot_dummy.json",
     "robot_hexarm": f"{file_dir}/config/robot_hexarm.json",
+    "robot_hello": f"{file_dir}/config/robot_hello.json",
     "cam_dummy": f"{file_dir}/config/cam_dummy.json",
     "cam_rgb": f"{file_dir}/config/cam_rgb.json",
 }
@@ -77,6 +80,9 @@ __all__ = [
     "HexRobotDummy",
     "HexRobotDummyClient",
     "HexRobotDummyServer",
+    "HexRobotHello",
+    "HexRobotHelloClient",
+    "HexRobotHelloServer",
     "HexRobotHexarm",
     "HexRobotHexarmClient",
     "HexRobotHexarmServer",
