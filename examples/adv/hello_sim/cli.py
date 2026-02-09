@@ -44,7 +44,8 @@ def interp_arm(cur_q,
                tar_joint,
                grip_tar=None,
                dofs: dict = None,
-               err_limit=0.05):
+               err_limit=0.05,
+               grip_err_limit=None):
     mid_joint = np.zeros(dofs["sum"])
     mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
         cur_q[:dofs["robot_arm"]],
@@ -55,7 +56,8 @@ def interp_arm(cur_q,
         mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
             cur_q[-dofs["robot_gripper"]:],
             grip_tar,
-            err_limit=err_limit,
+            err_limit=grip_err_limit
+            if grip_err_limit is not None else err_limit,
         )
     return mid_joint, interp_flag
 

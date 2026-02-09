@@ -263,15 +263,15 @@ class HexRobotHexarm(HexRobotBase):
                 raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
         else:
             raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
-        tar_pos = self._apply_pos_limits(
-            cmd_pos,
-            self._limits[:, 0, 0],
-            self._limits[:, 0, 1],
-        )
 
         # arm
+        arm_tar_pos = self._apply_pos_limits(
+            cmd_pos[self.__motor_idx["robot_arm"]],
+            self._limits[self.__motor_idx["robot_arm"], 0, 0],
+            self._limits[self.__motor_idx["robot_arm"], 0, 1],
+        )
         arm_cmd = self.__arm.construct_mit_command(
-            tar_pos[self.__motor_idx["robot_arm"]],
+            arm_tar_pos,
             tar_vel[self.__motor_idx["robot_arm"]],
             cmd_tor[self.__motor_idx["robot_arm"]],
             cmd_kp[self.__motor_idx["robot_arm"]],
@@ -280,9 +280,14 @@ class HexRobotHexarm(HexRobotBase):
         self.__arm.motor_command(CommandType.MIT, arm_cmd)
 
         # gripper
+        gripper_tar_pos = np.clip(
+            cmd_pos[self.__motor_idx["robot_gripper"]],
+            self._limits[self.__motor_idx["robot_gripper"], 0, 0],
+            self._limits[self.__motor_idx["robot_gripper"], 0, 1],
+        )
         if self.__gripper is not None:
             gripper_cmd = self.__gripper.construct_mit_command(
-                tar_pos[self.__motor_idx["robot_gripper"]],
+                gripper_tar_pos,
                 tar_vel[self.__motor_idx["robot_gripper"]],
                 cmd_tor[self.__motor_idx["robot_gripper"]],
                 cmd_kp[self.__motor_idx["robot_gripper"]],
