@@ -279,21 +279,22 @@ class HexRobotHexarm(HexRobotBase):
         )
         self.__arm.motor_command(CommandType.MIT, arm_cmd)
 
-        # gripper
-        gripper_tar_pos = np.clip(
-            cmd_pos[self.__motor_idx["robot_gripper"]],
-            self._limits[self.__motor_idx["robot_gripper"], 0, 0],
-            self._limits[self.__motor_idx["robot_gripper"], 0, 1],
-        )
         if self.__gripper is not None:
-            gripper_cmd = self.__gripper.construct_mit_command(
-                gripper_tar_pos,
-                tar_vel[self.__motor_idx["robot_gripper"]],
-                cmd_tor[self.__motor_idx["robot_gripper"]],
-                cmd_kp[self.__motor_idx["robot_gripper"]],
-                cmd_kd[self.__motor_idx["robot_gripper"]],
+            # gripper
+            gripper_tar_pos = np.clip(
+                cmd_pos[self.__motor_idx["robot_gripper"]],
+                self._limits[self.__motor_idx["robot_gripper"], 0, 0],
+                self._limits[self.__motor_idx["robot_gripper"], 0, 1],
             )
-            self.__gripper.motor_command(CommandType.MIT, gripper_cmd)
+            if self.__gripper is not None:
+                gripper_cmd = self.__gripper.construct_mit_command(
+                    gripper_tar_pos,
+                    tar_vel[self.__motor_idx["robot_gripper"]],
+                    cmd_tor[self.__motor_idx["robot_gripper"]],
+                    cmd_kp[self.__motor_idx["robot_gripper"]],
+                    cmd_kd[self.__motor_idx["robot_gripper"]],
+                )
+                self.__gripper.motor_command(CommandType.MIT, gripper_cmd)
 
         return True
 

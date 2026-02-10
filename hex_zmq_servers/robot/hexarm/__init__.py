@@ -26,6 +26,8 @@ HEXARM_URDF_PATH_DICT = {
     f"{urdf_dir}/archer_y6/gp100_p050_handle.urdf",
     "archer_y6_gp80":
     f"{urdf_dir}/archer_y6/gp80.urdf",
+    "archer_y6_gp80_p008":
+    f"{urdf_dir}/archer_y6/gp80_p008.urdf",
     "archer_d6y_empty":
     f"{urdf_dir}/archer_d6y/empty.urdf",
     "archer_d6y_gp80":
