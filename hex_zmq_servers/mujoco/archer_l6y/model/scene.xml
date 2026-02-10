@@ -30,10 +30,12 @@
         <body name="table" pos="0.5 0.0 0.3" quat="0.707107 0 0 0.707107">
             <geom mesh="table_link" pos="0 0 0" type="mesh" name="table" rgba="0.2 0.2 0.2 1"/>
         </body>
-        <body name="box" pos="0.5 0.0 0.5">
-            <joint name="red_box_joint" type="free" frictionloss="0.01"/>
+        <body name="apple" pos="0.5 0.0 0.5">
+            <joint name="apple_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002"/>
-            <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.02 0.02 0.02" type="box" name="red_box" rgba="1 0 0 1"/>
+            <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.028" type="sphere" name="apple_body" rgba="0.86 0.08 0.10 1"/>
+            <geom contype="0" conaffinity="0" pos="0 0 0.03" size="0.004 0.012" type="capsule" name="apple_stem" rgba="0.38 0.22 0.10 1"/>
+            <geom contype="0" conaffinity="0" pos="0.01 0.0 0.035" euler="0 0.5 0" size="0.004 0.009" type="capsule" name="apple_leaf" rgba="0.12 0.62 0.20 1"/>
         </body>
         <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
     </worldbody>
