@@ -110,7 +110,7 @@ class HexMujocoArcherY6(HexMujocoBase):
         fovy_rad = self.__model.cam_fovy[0] * np.pi / 180.0
         focal = 0.5 * self.__height / np.tan(fovy_rad / 2.0)
         self._intri = np.array(
-            [focal, focal, self.__height / 2, self.__height / 2])
+            [focal, focal, self.__width / 2, self.__height / 2])
         self.__use_rgb, self.__use_depth = CAMERA_CONFIG.get(
             self.__cam_type, (False, False))
         self.__rgb_cam, self.__depth_cam = None, None
