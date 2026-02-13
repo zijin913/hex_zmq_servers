@@ -47,4 +47,9 @@
     <mesh name="scanned_panda_visual" file="scanned_panda/model.obj"/>
     <texture name="scanned_panda_tex" type="2d" file="scanned_panda/texture.png"/>
     <material name="scanned_panda_mat" texture="scanned_panda_tex" specular="0.5" shininess="0.5"/>
+
+    <!-- Coffee mug with handle, scaled to 60% (7.6x5.4x8.1cm) -->
+    <mesh name="scanned_mug_visual" file="scanned_mug/model.obj" scale="0.6 0.6 0.6"/>
+    <texture name="scanned_mug_tex" type="2d" file="scanned_mug/texture.png"/>
+    <material name="scanned_mug_mat" texture="scanned_mug_tex" specular="0.5" shininess="0.5"/>
 </mujocoinclude>

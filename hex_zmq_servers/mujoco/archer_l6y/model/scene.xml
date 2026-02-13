@@ -77,14 +77,24 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="panda_collision"/>
         </body>
+        <!-- Scanned coffee mug with handle, scaled 60% (7.6x5.4x8.1cm) -->
+        <body name="mug" pos="0.50 0.18 0.47">
+            <joint name="mug_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.040" mass="0.12" diaginertia="0.00005 0.00005 0.00004"/>
+            <geom type="mesh" mesh="scanned_mug_visual" material="scanned_mug_mat"
+                  contype="0" conaffinity="0" group="2" name="mug_visual"/>
+            <geom type="cylinder" size="0.027 0.040" pos="0 0 0.040"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="mug_collision"/>
+        </body>
         <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
     </worldbody>
 
     <include file="setting.xml"/>
 
     <keyframe>
-        <!-- qpos: 12 robot joints (6 arm + 6 gripper) + 5*7 free bodies = 47 -->
-        <!-- bodies: apple, block, dog, kong, panda -->
+        <!-- qpos: 12 robot joints (6 arm + 6 gripper) + 6*7 free bodies = 54 -->
+        <!-- bodies: apple, block, dog, kong, panda, mug -->
         <!-- ctrl: 7 actuators (6 arm + 1 gripper) -->
         <key name="home" qpos="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
@@ -92,7 +102,8 @@
         0.52 -0.03 0.47 1.0 0.0 0.0 0.0
         0.46 0.07 0.47 1.0 0.0 0.0 0.0
         0.56 0.14 0.47 1.0 0.0 0.0 0.0
-        0.56 -0.11 0.47 1.0 0.0 0.0 0.0" ctrl="
+        0.56 -0.11 0.47 1.0 0.0 0.0 0.0
+        0.50 0.18 0.47 0.0 0.0 0.0 1.0" ctrl="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0"/>
     </keyframe>
 </mujoco>
