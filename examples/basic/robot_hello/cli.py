@@ -8,14 +8,16 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHelloClient,
 )
-from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
+from hex_robo_utils import (
+    HexPlotUtilPlotJuggler as HexPlotUtil,
+    HexRate,
+    hex_zmq_ts_delta_ms,
+    hex_zmq_ts_now,
+)
 
 
 def main():

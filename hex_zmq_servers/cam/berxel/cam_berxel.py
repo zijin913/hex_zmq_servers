@@ -12,9 +12,13 @@ import numpy as np
 from collections import deque
 
 from ..cam_base import HexCamBase
-from ...zmq_base import hex_ns_now, hex_zmq_ts_now
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 from berxel_py_wrapper import *
+
+from hex_robo_utils import (
+    hex_ns_now,
+    hex_zmq_ts_now,
+)
 
 CAMERA_CONFIG = {
     "serial_number": 'P100RYB4C03M2B322',

@@ -13,11 +13,12 @@ import numpy as np
 from collections import deque
 
 from ..cam_base import HexCamBase
-from ...zmq_base import (
-    hex_zmq_ts_now,
-    HexRate,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
+
+from hex_robo_utils import (
+    HexRate,
+    hex_zmq_ts_now,
+)
 
 CAMERA_CONFIG = {
     "cam_path": "/dev/video0",

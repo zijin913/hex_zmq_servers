@@ -14,12 +14,14 @@ import numpy as np
 from collections import deque
 
 from ..robot_base import HexRobotBase
-from ...zmq_base import (
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
-    HexRate,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
+
+from hex_robo_utils import (
+    HexRate,
+    hex_zmq_ts_delta_ms,
+    hex_zmq_ts_now,
+)
+
 from dynamixel_sdk.group_sync_read import GroupSyncRead
 from dynamixel_sdk.group_sync_write import GroupSyncWrite
 from dynamixel_sdk.packet_handler import PacketHandler

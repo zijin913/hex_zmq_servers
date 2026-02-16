@@ -9,8 +9,7 @@
 from .hex_launch import HexLaunch, HexNodeConfig, HEX_LOG_LEVEL, hex_dict_str, hex_log, hex_err
 
 from .device_base import HexDeviceBase
-from .zmq_base import hex_zmq_ts_to_ns, ns_to_hex_zmq_ts, hex_ns_now, hex_zmq_ts_now, hex_zmq_ts_delta_ms
-from .zmq_base import HexRate, HexZMQClientBase, HexZMQServerBase, hex_server_helper
+from .zmq_base import HexZMQClientBase, HexZMQServerBase, hex_server_helper
 from .zmq_base import HexZMQDummyClient, HexZMQDummyServer
 
 from .robot import HexRobotBase, HexRobotClientBase, HexRobotServerBase
@@ -61,12 +60,6 @@ __all__ = [
 
     # base
     "HexDeviceBase",
-    "HexRate",
-    "hex_zmq_ts_to_ns",
-    "ns_to_hex_zmq_ts",
-    "hex_ns_now",
-    "hex_zmq_ts_now",
-    "hex_zmq_ts_delta_ms",
     "HexZMQClientBase",
     "HexZMQServerBase",
     "hex_server_helper",

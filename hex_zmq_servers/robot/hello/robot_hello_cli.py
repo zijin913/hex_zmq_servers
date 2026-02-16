@@ -7,7 +7,10 @@
 ################################################################
 
 from ..robot_base import HexRobotClientBase
-from ...zmq_base import hex_zmq_ts_now, HexRate
+from hex_robo_utils import (
+    HexRate,
+    hex_zmq_ts_now,
+)
 
 import numpy as np
 from collections import deque

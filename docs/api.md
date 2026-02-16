@@ -8,34 +8,6 @@ This document lists servers, clients, and utility functions in `hex_zmq_servers`
 
 ---
 
-# Common Utilities
-
-## Functions
-
-| Function                                                  | Description                                      |
-| --------------------------------------------------------- | ------------------------------------------------ |
-| `hex_zmq_ts_to_ns(ts: dict)->int`                         | Convert `{s, ns}` to nanoseconds.                |
-| `ns_to_hex_zmq_ts(ns: int)->dict`                         | Convert nanoseconds to `{s, ns}`.                |
-| `hex_ns_now()->int`                                       | Current time in ns (PTP if `HEX_PTP_CLOCK` set). |
-| `hex_zmq_ts_now()->dict`                                  | `{s, ns}` for now.                               |
-| `hex_zmq_ts_delta_ms(curr_ts: dict, hdr_ts: dict)->float` | Delta in ms.                                     |
-
-## Classes
-
-### HexRate
-
-- A Class used to fix the rate of a loop.
-- Usage:
-  
-  ```python
-  rate = HexRate(hz)
-  while True:
-    ...
-    rate.sleep()
-  ```
-
----
-
 # Devices
 
 - client common api:

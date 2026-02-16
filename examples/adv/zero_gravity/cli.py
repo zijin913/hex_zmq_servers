@@ -9,12 +9,14 @@
 import argparse, json, time
 import numpy as np
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexRate,
+)
 
 END_POSE = np.array(
     [0.0, 0.0, 0.083, 0.7071068, 0.0, -0.7071068, 0.0],

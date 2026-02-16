@@ -11,13 +11,18 @@ import numpy as np
 import pygame
 import pygame.locals as pygconst
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
-from hex_robo_utils import part2trans, trans2part, trans_inv, quat_mul
+from hex_robo_utils import (
+    HexRate,
+    HexDynUtil as DynUtil,
+    part2trans,
+    trans2part,
+    trans_inv,
+    quat_mul,
+)
 
 JOY_BUTTON_MAP = {
     "L1": 4,

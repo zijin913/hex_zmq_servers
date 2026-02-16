@@ -8,11 +8,11 @@
 
 import argparse, json, time
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexZMQDummyClient,
 )
+from hex_robo_utils import HexRate
 
 
 def wait_client_working(client, timeout: float = 5.0) -> bool:

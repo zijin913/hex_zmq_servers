@@ -17,15 +17,16 @@ import mujoco
 from mujoco import viewer
 
 from ..mujoco_base import HexMujocoBase
-from ...zmq_base import (
+from ...hex_launch import hex_log, HEX_LOG_LEVEL
+
+from hex_robo_utils import (
+    HexCtrlUtilMitJoint as CtrlUtil,
+    HexRate,
     hex_ns_now,
+    hex_zmq_ts_delta_ms,
     hex_zmq_ts_now,
     ns_to_hex_zmq_ts,
-    hex_zmq_ts_delta_ms,
-    HexRate,
 )
-from ...hex_launch import hex_log, HEX_LOG_LEVEL
-from hex_robo_utils import HexCtrlUtilMitJoint as CtrlUtil
 
 MUJOCO_CONFIG = {
     "states_rate": 1000,

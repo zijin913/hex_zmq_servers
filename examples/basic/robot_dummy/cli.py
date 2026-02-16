@@ -8,12 +8,13 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotDummyClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_zmq_ts_now,
 )
 
 import numpy as np

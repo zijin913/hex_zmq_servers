@@ -216,10 +216,8 @@ If you only want to create your own application, you can choose the installation
 
     ```python
     import argparse, json
-    from hex_zmq_servers import (
-        HexRate,
-        HexCamDummyClient,
-    )
+    from hex_zmq_servers import HexCamDummyClient
+    from hex_robo_utils import HexRate
 
     import cv2
 
