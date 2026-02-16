@@ -12,7 +12,7 @@ from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_y6"
+ARM_TYPE = "firefly_y6"
 GRIPPER_TYPE = "gp80"
 
 # server ports
@@ -20,10 +20,10 @@ HELLO_SRV_PORT = 12345
 HEXARM_SRV_PORT = 12346
 
 # device config
-HELLO_DEVICE_IP = "172.18.22.245"
-HELLO_DEVICE_PORT = 9439
-HEXARM_DEVICE_IP = "172.18.22.245"
-HEXARM_DEVICE_PORT = 8439
+HELLO_DEVICE_IP = "172.18.24.90"
+HELLO_DEVICE_PORT = 8439
+HEXARM_DEVICE_IP = "172.18.24.90"
+HEXARM_DEVICE_PORT = 9439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

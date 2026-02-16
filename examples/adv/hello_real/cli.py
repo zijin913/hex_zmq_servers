@@ -124,6 +124,7 @@ def main():
     runtime_limit = 0.2
     grip_err_limit = 0.5
     hello_client.set_rgbs(np.array([255, 255, 0]))
+    grip_cmd, grip_ratio, grip_threshold = None, 0.7, 0.5
     rate = HexRate(500)
     while True:
         # gello
@@ -146,8 +147,16 @@ def main():
             if hello_cmds is not None:
                 grip_tar = None
                 if hexarm_dofs["robot_gripper"] is not None:
-                    grip_tar = gripper_d + gripper_k * hello_cmds[
-                        -hexarm_dofs["robot_gripper"]:, 0].copy()
+                    if grip_cmd is None:
+                        grip_cmd = hello_cmds[-hexarm_dofs["robot_gripper"]:, 0].copy()
+                    else:
+                        grip_cmd = hello_cmds[-hexarm_dofs["robot_gripper"]:, 0] * grip_ratio + grip_cmd * (1 - grip_ratio)
+                    modified_grip_cmds = np.zeros_like(grip_cmd)
+                    large_mask = grip_cmd  > grip_threshold
+                    small_mask = grip_cmd < -grip_threshold
+                    modified_grip_cmds[large_mask] = 1.0
+                    modified_grip_cmds[small_mask] = -1.0
+                    grip_tar = gripper_d + gripper_k * modified_grip_cmds
                 mid_q, interp_flag = interp_arm(
                     cur_q,
                     hello_cmds[:hexarm_dofs["robot_arm"], 0],
