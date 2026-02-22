@@ -6,6 +6,8 @@
 # Date  : 2025-12-30
 ################################################################
 
+from collections import deque
+
 from ..mujoco_base import HexMujocoClientBase
 from ...zmq_base import HexRate
 
@@ -35,7 +37,61 @@ class HexMujocoArcherL6YClient(HexMujocoClientBase):
     ):
         HexMujocoClientBase.__init__(self, net_config)
         self.__recv_config = recv_config
+        self._side_camera_seq = {"rgb": 0, "depth": 0}
+        self._side_used_camera_seq = {"rgb": 0, "depth": 0}
+        self._side_camera_queue = {
+            "rgb": deque(maxlen=self._deque_maxlen),
+            "depth": deque(maxlen=self._deque_maxlen),
+        }
         self._wait_for_working()
+
+    def _get_side_frame_inner(self, depth_flag: bool = False):
+        key = "depth" if depth_flag else "rgb"
+        req_cmd = f"get_side_{'depth' if depth_flag else 'rgb'}"
+        hdr, img = self.request({
+            "cmd": req_cmd,
+            "args": (1 + self._side_camera_seq[key]) % self._max_seq_num,
+        })
+        try:
+            if hdr["cmd"] == f"{req_cmd}_ok":
+                self._side_camera_seq[key] = hdr["args"]
+                return hdr, img
+            else:
+                return None, None
+        except Exception:
+            return None, None
+
+    def get_side_rgb(self, newest: bool = False):
+        try:
+            if self._realtime_mode or newest:
+                hdr, img = self._side_camera_queue["rgb"][-1]
+                if self._side_used_camera_seq["rgb"] != hdr["args"]:
+                    self._side_used_camera_seq["rgb"] = hdr["args"]
+                    return hdr, img
+                else:
+                    return None, None
+            else:
+                return self._side_camera_queue["rgb"].popleft()
+        except IndexError:
+            return None, None
+
+    def get_side_depth(self, newest: bool = False):
+        try:
+            if self._realtime_mode or newest:
+                hdr, img = self._side_camera_queue["depth"][-1]
+                if self._side_used_camera_seq["depth"] != hdr["args"]:
+                    self._side_used_camera_seq["depth"] = hdr["args"]
+                    return hdr, img
+                else:
+                    return None, None
+            else:
+                return self._side_camera_queue["depth"].popleft()
+        except IndexError:
+            return None, None
+
+    def get_side_intri(self):
+        intri_hdr, intri = self.request({"cmd": "get_side_intri"})
+        return intri_hdr, intri
 
     def _recv_loop(self):
         rate = HexRate(2000)
@@ -60,6 +116,13 @@ class HexMujocoArcherL6YClient(HexMujocoClientBase):
                     hdr, img = self._get_depth_inner()
                     if hdr is not None:
                         self._camera_queue["depth"].append((hdr, img))
+                # side camera (always poll when image_trig fires)
+                hdr, img = self._get_side_frame_inner(False)
+                if hdr is not None:
+                    self._side_camera_queue["rgb"].append((hdr, img))
+                hdr, img = self._get_side_frame_inner(True)
+                if hdr is not None:
+                    self._side_camera_queue["depth"].append((hdr, img))
 
             try:
                 cmds = self._cmds_queue[-1]

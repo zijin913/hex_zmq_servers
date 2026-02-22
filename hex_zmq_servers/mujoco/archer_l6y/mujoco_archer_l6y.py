@@ -123,6 +123,29 @@ class HexMujocoArcherL6Y(HexMujocoBase):
                                                self.__width)
             self.__depth_cam.enable_depth_rendering()
 
+        # side camera init (fixed third-person view)
+        self.__side_width, self.__side_height = 640, 400
+        self.__side_rgb_cam, self.__side_depth_cam = None, None
+        self.__use_side_cam = False
+        self._side_intri = None
+        side_cam_id = mujoco.mj_name2id(
+            self.__model, mujoco.mjtObj.mjOBJ_CAMERA, "side_camera")
+        if side_cam_id >= 0:
+            side_fovy_rad = self.__model.cam_fovy[side_cam_id] * np.pi / 180.0
+            side_focal = 0.5 * self.__side_height / np.tan(side_fovy_rad / 2.0)
+            self._side_intri = np.array([
+                side_focal, side_focal,
+                self.__side_width / 2, self.__side_height / 2
+            ])
+            if self.__use_rgb:
+                self.__side_rgb_cam = mujoco.Renderer(
+                    self.__model, self.__side_height, self.__side_width)
+            if self.__use_depth:
+                self.__side_depth_cam = mujoco.Renderer(
+                    self.__model, self.__side_height, self.__side_width)
+                self.__side_depth_cam.enable_depth_rendering()
+            self.__use_side_cam = True
+
         # viewer init
         mujoco.mj_forward(self.__model, self.__data)
         if not self.__headless:
@@ -149,7 +172,9 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         cmds_robot_queue = hex_queues[2]
         rgb_queue = hex_queues[3]
         depth_queue = hex_queues[4]
-        stop_event = hex_queues[5]
+        side_rgb_queue = hex_queues[5]
+        side_depth_queue = hex_queues[6]
+        stop_event = hex_queues[7]
 
         last_states_ts = {"s": 0, "ns": 0}
         states_robot_count = 0
@@ -157,6 +182,8 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         last_cmds_robot_seq = -1
         rgb_count = 0
         depth_count = 0
+        side_rgb_count = 0
+        side_depth_count = 0
         cmds_robot = None
 
         rate = HexRate(self.__sim_rate)
@@ -170,6 +197,13 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         depth_queue.append((init_ts, 0,
                             np.zeros((self.__height, self.__width),
                                      dtype=np.uint16)))
+        if self.__use_side_cam:
+            side_rgb_queue.append((init_ts, 0,
+                                   np.zeros((self.__side_height, self.__side_width, 3),
+                                            dtype=np.uint8)))
+            side_depth_queue.append((init_ts, 0,
+                                     np.zeros((self.__side_height, self.__side_width),
+                                              dtype=np.uint16)))
         while self._working.is_set() and not stop_event.is_set():
             states_trig_count += 1
             if states_trig_count >= self.__states_trig_thresh:
@@ -227,6 +261,20 @@ class HexMujocoArcherL6Y(HexMujocoBase):
                     if depth_img is not None:
                         depth_queue.append((ts, depth_count, depth_img))
                         depth_count = (depth_count + 1) % self._max_seq_num
+
+                # side camera rgb
+                if self.__use_side_cam and self.__use_rgb:
+                    ts, side_rgb_img = self.__get_side_rgb()
+                    if side_rgb_img is not None:
+                        side_rgb_queue.append((ts, side_rgb_count, side_rgb_img))
+                        side_rgb_count = (side_rgb_count + 1) % self._max_seq_num
+
+                # side camera depth
+                if self.__use_side_cam and self.__use_depth:
+                    ts, side_depth_img = self.__get_side_depth()
+                    if side_depth_img is not None:
+                        side_depth_queue.append((ts, side_depth_count, side_depth_img))
+                        side_depth_count = (side_depth_count + 1) % self._max_seq_num
 
             # mujoco step
             mujoco.mj_step(self.__model, self.__data)
@@ -309,6 +357,22 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
         ), depth_img
 
+    def __get_side_rgb(self):
+        self.__side_rgb_cam.update_scene(self.__data, "side_camera")
+        rgb_img = self.__side_rgb_cam.render()
+        return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
+        ), cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
+
+    def __get_side_depth(self):
+        self.__side_depth_cam.update_scene(self.__data, "side_camera")
+        depth_m = self.__side_depth_cam.render().astype(np.float32)
+        depth_img = np.clip(depth_m * 1000.0, 0, 65535).astype(np.uint16)
+        return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
+        ), depth_img
+
+    def get_side_intri(self):
+        return self._side_intri
+
     def __mujoco_ts(self):
         mujoco_ts = self.__data.time * 1_000_000_000 + self.__bias_ns
         return ns_to_hex_zmq_ts(mujoco_ts)
@@ -321,6 +385,10 @@ class HexMujocoArcherL6Y(HexMujocoBase):
             self.__rgb_cam.close()
         if self.__depth_cam is not None:
             self.__depth_cam.close()
+        if self.__side_rgb_cam is not None:
+            self.__side_rgb_cam.close()
+        if self.__side_depth_cam is not None:
+            self.__side_depth_cam.close()
         if not self.__headless:
             self.__viewer.close()
         hex_log(HEX_LOG_LEVEL["info"], "HexMujocoArcherL6Y closed")

@@ -58,6 +58,8 @@ class HexMujocoArcherL6YServer(HexMujocoServerBase):
         self._states_obj_queue = deque(maxlen=self._deque_maxlen)
         self._rgb_queue = deque(maxlen=self._deque_maxlen)
         self._depth_queue = deque(maxlen=self._deque_maxlen)
+        self._side_rgb_queue = deque(maxlen=self._deque_maxlen)
+        self._side_depth_queue = deque(maxlen=self._deque_maxlen)
 
     def work_loop(self):
         try:
@@ -67,6 +69,8 @@ class HexMujocoArcherL6YServer(HexMujocoServerBase):
                 self._cmds_queue,
                 self._rgb_queue,
                 self._depth_queue,
+                self._side_rgb_queue,
+                self._side_depth_queue,
                 self._stop_event,
             ])
         finally:
@@ -108,6 +112,29 @@ class HexMujocoArcherL6YServer(HexMujocoServerBase):
         else:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
+    def _get_side_frame(self, recv_hdr: dict):
+        try:
+            seq = recv_hdr["args"]
+        except KeyError:
+            print(f"\033[91m{recv_hdr['cmd']} requires `args`\033[0m")
+            return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
+
+        depth_flag = "depth" in recv_hdr["cmd"]
+        queue = self._side_depth_queue if depth_flag else self._side_rgb_queue
+        try:
+            ts, count, img = queue[-1] if self._realtime_mode else queue.popleft()
+        except IndexError:
+            return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
+        except Exception as e:
+            print(f"\033[91m{recv_hdr['cmd']} failed: {e}\033[0m")
+            return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
+
+        delta = (count - seq) % self._max_seq_num
+        if delta >= 0 and delta < 1e6:
+            return {"cmd": f"{recv_hdr['cmd']}_ok", "ts": ts, "args": count}, img
+        else:
+            return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
+
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):
         if recv_hdr["cmd"] == "is_working":
             return self.no_ts_hdr(recv_hdr, self._device.is_working()), None
@@ -132,6 +159,12 @@ class HexMujocoArcherL6YServer(HexMujocoServerBase):
         elif (recv_hdr["cmd"] == "get_rgb") or (recv_hdr["cmd"]
                                                 == "get_depth"):
             return self._get_frame(recv_hdr)
+        elif recv_hdr["cmd"] == "get_side_intri":
+            side_intri = self._device.get_side_intri()
+            return self.no_ts_hdr(recv_hdr, side_intri is not None), side_intri
+        elif (recv_hdr["cmd"] == "get_side_rgb") or (recv_hdr["cmd"]
+                                                     == "get_side_depth"):
+            return self._get_side_frame(recv_hdr)
         else:
             raise ValueError(f"unknown command: {recv_hdr['cmd']}")
 
