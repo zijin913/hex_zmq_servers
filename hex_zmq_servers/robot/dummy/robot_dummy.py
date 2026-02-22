@@ -15,8 +15,8 @@ from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 ROBOT_CONFIG = {
@@ -60,7 +60,7 @@ class HexRobotDummy(HexRobotBase):
         rate = HexRate(1000)
         while self._working.is_set() and not stop_event.is_set():
             # states
-            states_queue.append((hex_zmq_ts_now(), states_count, dummy_states))
+            states_queue.append((hex_ts_now(), states_count, dummy_states))
             states_count = (states_count + 1) % self._max_seq_num
 
             # cmds
@@ -74,7 +74,7 @@ class HexRobotDummy(HexRobotBase):
                 ts, seq, cmds = cmds_pack
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
-                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                    if hex_ts_delta_ms(hex_ts_now(), ts) < 200.0:
                         cmds = np.clip(
                             cmds,
                             self._limits[:, :, 0],

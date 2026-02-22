@@ -15,8 +15,8 @@ from hex_zmq_servers import (
 from hex_robo_utils import (
     HexPlotUtilPlotJuggler as HexPlotUtil,
     HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import numpy as np
@@ -52,10 +52,10 @@ def main():
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
-            curr_ts = hex_zmq_ts_now()
+            curr_ts = hex_ts_now()
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"states_seq: {states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
+                f"states_seq: {states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
             arm_q = states[:dofs['robot_arm'], 0]
             arm_dq = states[:dofs['robot_arm'], 1]

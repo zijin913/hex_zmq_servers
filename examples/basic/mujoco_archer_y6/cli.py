@@ -14,8 +14,8 @@ from hex_zmq_servers import (
 )
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -60,10 +60,10 @@ def main():
         while True:
             robot_states_hdr, robot_states = client.get_states("robot")
             if robot_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"robot_states_seq: {robot_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, robot_states_hdr['ts'])}ms"
+                    f"robot_states_seq: {robot_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, robot_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"],
                         f"robot_states pos: {robot_states[:, 0]}")
@@ -74,10 +74,10 @@ def main():
 
             obj_states_hdr, obj_states = client.get_states("obj")
             if obj_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
+                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"], f"obj_states: {obj_states}")
 
@@ -95,10 +95,10 @@ def main():
 
             depth_hdr, depth_img = client.get_depth()
             if depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"depth_seq: {depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
+                    f"depth_seq: {depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
                 )
                 depth_values = depth_img.astype(np.float32)
                 depth_norm = np.clip((depth_values - 70) / (1000 - 70), 0.0,
@@ -109,10 +109,10 @@ def main():
 
             rgb_hdr, rgb_img = client.get_rgb()
             if rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
+                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("rgb_img", rgb_img)
 

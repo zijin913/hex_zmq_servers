@@ -16,7 +16,7 @@ from ..zmq_base import HexZMQClientBase, HexZMQServerBase
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_now,
+    hex_ts_now,
 )
 
 NET_CONFIG = {
@@ -161,7 +161,7 @@ class HexRobotClientBase(HexZMQClientBase):
         hdr, _ = self.request(
             {
                 "cmd": "set_cmds",
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._cmds_seq,
             },
             cmds,

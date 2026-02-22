@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_now,
+    hex_ts_now,
 )
 
 MAX_SEQ_NUM = int(1e12)
@@ -119,7 +119,7 @@ class HexZMQClientBase(ABC):
             req_buf = np.ascontiguousarray(req_buf)
         send_hdr = {
             "cmd": req_dict["cmd"],
-            "ts": req_dict.get("ts", hex_zmq_ts_now()),
+            "ts": req_dict.get("ts", hex_ts_now()),
             "args": req_dict.get("args", None),
             "dtype": str(req_buf.dtype),
             "shape": tuple(req_buf.shape),
@@ -251,7 +251,7 @@ class HexZMQServerBase(ABC):
                     resp_buf = np.ascontiguousarray(resp_buf)
                 send_hdr = {
                     "cmd": resp_hdr["cmd"],
-                    "ts": resp_hdr.get("ts", hex_zmq_ts_now()),
+                    "ts": resp_hdr.get("ts", hex_ts_now()),
                     "args": resp_hdr.get("args", None),
                     "dtype": str(resp_buf.dtype),
                     "shape": tuple(resp_buf.shape),
@@ -272,7 +272,7 @@ class HexZMQServerBase(ABC):
                         "err": str(e)
                     },
                     "ts":
-                    hex_zmq_ts_now(),
+                    hex_ts_now(),
                     "dtype":
                     "uint8",
                     "shape": (0, ),

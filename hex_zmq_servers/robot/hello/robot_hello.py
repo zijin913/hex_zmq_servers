@@ -14,11 +14,7 @@ from collections import deque
 from ..robot_base import HexRobotBase
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
-from hex_robo_utils import (
-    HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
-)
+from hex_robo_utils import (HexRate, hex_ts_delta_ms, hex_ts_now)
 from hex_device import HexDeviceApi, Arm, Hands
 from hex_device.motor_base import CommandType
 
@@ -118,7 +114,7 @@ class HexRobotHello(HexRobotBase):
         rgbs_queue = hex_queues[1]
         stop_event = hex_queues[2]
 
-        last_states_ts = hex_zmq_ts_now()
+        last_states_ts = hex_ts_now()
         states_count = 0
         cmds_count = 0
         cmds = np.zeros((self._dofs_sum, 5))
@@ -128,7 +124,7 @@ class HexRobotHello(HexRobotBase):
             # states
             ts, states = self.__get_states()
             if states is not None:
-                if hex_zmq_ts_delta_ms(ts, last_states_ts) > 1e-6:
+                if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
@@ -150,7 +146,7 @@ class HexRobotHello(HexRobotBase):
                 ts, seq, rgbs = rgbs_pack
                 if seq != last_rgbs_seq:
                     last_rgbs_seq = seq
-                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                    if hex_ts_delta_ms(hex_ts_now(), ts) < 200.0:
                         self.__set_rgbs(rgbs)
 
             # sleep
@@ -164,11 +160,10 @@ class HexRobotHello(HexRobotBase):
             return None, None
 
         # (arm_dofs, 3) # pos vel eff
-        if self.__arm_state_buffer is None:
-            self.__arm_state_buffer = self.__arm.get_simple_motor_status()
+        self.__arm_state_buffer = self.__arm.get_simple_motor_status()
 
         # (gripper_dofs, 3) # pos vel eff
-        if self.__gripper is not None and self.__gripper_state_buffer is None:
+        if self.__gripper is not None:
             self.__gripper_state_buffer = self.__gripper.get_simple_motor_status(
             )
 
@@ -179,7 +174,7 @@ class HexRobotHello(HexRobotBase):
             gripper_ts = self.__gripper_state_buffer[
                 'ts'] if self.__gripper is not None else arm_ts
 
-            delta_ms = hex_zmq_ts_delta_ms(arm_ts, gripper_ts)
+            delta_ms = hex_ts_delta_ms(arm_ts, gripper_ts)
             if np.fabs(delta_ms) < 1e-6:
                 pos = self.__arm_state_buffer['pos']
                 vel = self.__arm_state_buffer['vel']
@@ -195,7 +190,7 @@ class HexRobotHello(HexRobotBase):
 
                 state = np.array([pos, vel, eff]).T
                 self.__arm_state_buffer, self.__gripper_state_buffer = None, None
-                return arm_ts if self.__sens_ts else hex_zmq_ts_now(), state
+                return arm_ts if self.__sens_ts else hex_ts_now(), state
             elif delta_ms > 0.0:
                 self.__gripper_state_buffer = None
                 return None, None

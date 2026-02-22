@@ -18,8 +18,8 @@ from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 from dynamixel_sdk.group_sync_read import GroupSyncRead
@@ -133,7 +133,7 @@ class HexRobotGello(HexRobotBase):
                 ts, seq, cmds = cmds_pack
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
-                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                    if hex_ts_delta_ms(hex_ts_now(), ts) < 200.0:
                         self.__set_cmds(cmds)
 
             # sleep
@@ -144,7 +144,7 @@ class HexRobotGello(HexRobotBase):
 
     def __get_states(self):
         with self.__lock:
-            ts = hex_zmq_ts_now()
+            ts = hex_ts_now()
             servo_values = np.zeros(self._dofs, dtype=int)
             dxl_comm_result = self.__group_sync_read.txRxPacket()
             if dxl_comm_result != COMM_SUCCESS:
@@ -169,7 +169,7 @@ class HexRobotGello(HexRobotBase):
                 self._limits[:, 0],
                 self._limits[:, 1],
             )
-            return ts if self.__sens_ts else hex_zmq_ts_now(), rads
+            return ts if self.__sens_ts else hex_ts_now(), rads
 
     def __set_cmds(self, cmds: np.ndarray):
         if len(cmds) != len(self.__idxs):

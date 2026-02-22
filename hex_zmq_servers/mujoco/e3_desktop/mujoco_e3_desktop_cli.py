@@ -12,7 +12,7 @@ from ..mujoco_base import HexMujocoClientBase
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_now,
+    hex_ts_now,
 )
 
 NET_CONFIG = {
@@ -211,7 +211,7 @@ class HexMujocoE3DesktopClient(HexMujocoClientBase):
         hdr, _ = self.request(
             {
                 "cmd": req_cmd,
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._cmds_seq[robot_name],
             },
             cmds,

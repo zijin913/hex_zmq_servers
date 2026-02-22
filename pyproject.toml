@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_zmq_servers"
-version = "1.0.5"
+version = "1.0.6"
 description = "HEXFELLOW ZMQ Servers"
 readme = "README.md"
 license = "Apache-2.0"
@@ -19,7 +19,6 @@ dependencies = [
   "pyzmq>=27.0.1",
   "hex_device>=1.3.17,<1.4.0",
   "hex_robo_utils>=0.2.0,<0.3.0",
-  "opencv-python>=4.2",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",

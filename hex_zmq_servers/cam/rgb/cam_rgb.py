@@ -17,7 +17,7 @@ from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_now,
+    hex_ts_now,
 )
 
 CAMERA_CONFIG = {
@@ -107,7 +107,7 @@ class HexCamRGB(HexCamBase):
         stop_event = hex_queues[2]
 
         rgb_count = 0
-        depth_queue.append((hex_zmq_ts_now(), 0,
+        depth_queue.append((hex_ts_now(), 0,
                             np.zeros(
                                 (self.__resolution[1], self.__resolution[0]),
                                 dtype=np.uint16)))
@@ -120,7 +120,7 @@ class HexCamRGB(HexCamBase):
             if ret:
                 frame = frame[self.__crop[2]:self.__crop[3],
                               self.__crop[0]:self.__crop[1]]
-                rgb_queue.append((hex_zmq_ts_now(), rgb_count, frame))
+                rgb_queue.append((hex_ts_now(), rgb_count, frame))
                 rgb_count = (rgb_count + 1) % self._max_seq_num
 
             rate.sleep()

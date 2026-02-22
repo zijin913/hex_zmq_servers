@@ -9,7 +9,7 @@
 from ..robot_base import HexRobotClientBase
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_now,
+    hex_ts_now,
 )
 
 import numpy as np
@@ -51,7 +51,7 @@ class HexRobotHelloClient(HexRobotClientBase):
         hdr, rgbs = self.request(
             {
                 "cmd": "set_rgbs",
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._rgbs_seq,
             },
             rgbs,

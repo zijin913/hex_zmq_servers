@@ -14,8 +14,8 @@ from hex_zmq_servers import (
 )
 from hex_robo_utils import (
     HexRate,
-    hex_zmq_ts_delta_ms,
-    hex_zmq_ts_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -49,10 +49,10 @@ def process_depth_img(
     index,
 ):
     if depth_hdr is not None:
-        curr_ts = hex_zmq_ts_now()
+        curr_ts = hex_ts_now()
         hex_log(
             HEX_LOG_LEVEL["info"],
-            f"cam_{index}: depth_seq: {depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
+            f"cam_{index}: depth_seq: {depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
         )
         # if rotate_type is not None:
         #     depth_img = cv2.rotate(depth_img, rotate_type)
@@ -80,10 +80,10 @@ def process_rgb_img(
     index,
 ):
     if rgb_hdr is not None:
-        curr_ts = hex_zmq_ts_now()
+        curr_ts = hex_ts_now()
         hex_log(
             HEX_LOG_LEVEL["info"],
-            f"cam_{index}: rgb_seq: {rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
+            f"cam_{index}: rgb_seq: {rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
         )
         rgb_crop = rgb_img[crop[0]:crop[1], crop[2]:crop[3]]
         if rotate_type is not None:
