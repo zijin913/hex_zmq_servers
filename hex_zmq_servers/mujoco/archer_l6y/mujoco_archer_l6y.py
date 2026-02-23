@@ -189,6 +189,8 @@ class HexMujocoArcherL6Y(HexMujocoBase):
         rate = HexRate(self.__sim_rate)
         states_trig_count = 0
         img_trig_count = 0
+        side_img_trig_count = 0
+        side_img_trig_thresh = self.__img_trig_thresh * 3  # side cam at ~10Hz (1/3 of main)
         self.__bias_ns = hex_ns_now() - self.__data.time * 1_000_000_000
         init_ts = self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now()
         rgb_queue.append((init_ts, 0,
@@ -262,15 +264,17 @@ class HexMujocoArcherL6Y(HexMujocoBase):
                         depth_queue.append((ts, depth_count, depth_img))
                         depth_count = (depth_count + 1) % self._max_seq_num
 
-                # side camera rgb
-                if self.__use_side_cam and self.__use_rgb:
+            # side camera: render at lower rate (~10Hz) to avoid slowing down sim
+            side_img_trig_count += 1
+            if self.__use_side_cam and side_img_trig_count >= side_img_trig_thresh:
+                side_img_trig_count = 0
+                if self.__use_rgb:
                     ts, side_rgb_img = self.__get_side_rgb()
                     if side_rgb_img is not None:
                         side_rgb_queue.append((ts, side_rgb_count, side_rgb_img))
                         side_rgb_count = (side_rgb_count + 1) % self._max_seq_num
-
-                # side camera depth
-                if self.__use_side_cam and self.__use_depth:
+                # side depth only if explicitly needed (skip by default to save render time)
+                if self.__use_depth and self.__side_depth_cam is not None:
                     ts, side_depth_img = self.__get_side_depth()
                     if side_depth_img is not None:
                         side_depth_queue.append((ts, side_depth_count, side_depth_img))
