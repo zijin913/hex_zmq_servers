@@ -30,6 +30,8 @@
         <body name="table" pos="0.5 0.0 0.3" quat="0.707107 0 0 0.707107">
             <geom mesh="table_link" pos="0 0 0" type="mesh" name="table" rgba="0.2 0.2 0.2 1"/>
         </body>
+        <!-- apple, block, dog, kong, panda 暂时注释掉 -->
+        <!--
         <body name="apple" pos="0.46 -0.14 0.5">
             <joint name="apple_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002"/>
@@ -37,7 +39,6 @@
             <geom contype="0" conaffinity="0" pos="0 0 0.03" size="0.004 0.012" type="capsule" name="apple_stem" rgba="0.38 0.22 0.10 1"/>
             <geom contype="0" conaffinity="0" pos="0.01 0.0 0.035" euler="0 0.5 0" size="0.004 0.009" type="capsule" name="apple_leaf" rgba="0.12 0.62 0.20 1"/>
         </body>
-        <!-- Scanned wooden ABC block (3.1x3.1x3.0cm) -->
         <body name="block" pos="0.52 -0.03 0.47">
             <joint name="block_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.015" mass="0.02" diaginertia="0.00001 0.00001 0.00001"/>
@@ -47,7 +48,6 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="block_collision"/>
         </body>
-        <!-- Scanned toy dog (3.5x4.8x5.0cm) -->
         <body name="dog" pos="0.46 0.07 0.47">
             <joint name="dog_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.025" mass="0.03" diaginertia="0.00002 0.00002 0.00002"/>
@@ -57,7 +57,6 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="dog_collision"/>
         </body>
-        <!-- Scanned Kong puppy rubber toy (4.5x4.4x7.2cm) -->
         <body name="kong" pos="0.56 0.14 0.47">
             <joint name="kong_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.036" mass="0.04" diaginertia="0.00002 0.00002 0.00002"/>
@@ -67,7 +66,6 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1.2 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="kong_collision"/>
         </body>
-        <!-- Scanned Android panda figure (6.1x4.6x7.6cm) -->
         <body name="panda" pos="0.56 -0.11 0.47">
             <joint name="panda_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.038" mass="0.05" diaginertia="0.00003 0.00003 0.00003"/>
@@ -77,8 +75,10 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="panda_collision"/>
         </body>
+        -->
         <!-- Scanned coffee mug with handle, scaled 60% (7.6x5.4x8.1cm) -->
-        <body name="mug" pos="0.50 0.18 0.47">
+        <!-- 放置在 PartNet table 中层搁板上，偏右侧（机械臂视角） -->
+        <body name="mug" pos="0.50 -0.018 0.6317">
             <joint name="mug_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.040" mass="0.12" diaginertia="0.00005 0.00005 0.00004"/>
             <geom type="mesh" mesh="scanned_mug_visual" material="scanned_mug_mat"
@@ -87,6 +87,45 @@
                   condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
                   group="3" rgba="0 0 0 0" name="mug_collision"/>
         </body>
+        <!-- PartNet-Mobility Table id=22508 (带抽屉小桌, 总缩放25%, 约0.30x0.30x0.33m) -->
+        <!-- 放置在prop table桌面上: 桌面z≈0.47, 底部偏移0.175(=0.349×0.5), body z=0.645 -->
+        <body name="table_22508" pos="0.58 -0.05 0.645">
+            <joint name="table_22508_free" type="free" frictionloss="0.1"/>
+            <inertial pos="0 0 0" mass="3.0" diaginertia="0.05 0.05 0.03"/>
+            <!-- link_1: 桌体，fixed joint quat=(0.5 0.5 -0.5 -0.5) 对应 rpy=(pi/2,0,-pi/2) -->
+            <!-- 碰撞体尺寸为0.5x mesh(顶点)的一半，与assets.xml中scale="0.5"对应 -->
+            <body name="table_22508_link1" quat="0.5 0.5 -0.5 -0.5">
+                <geom type="mesh" mesh="t22508_body" material="t22508_wood"
+                      contype="0" conaffinity="0" group="2" name="t22508_body_visual"/>
+                <!-- 碰撞分三段，中间留出杯子空间 (link_1 Y轴 = 世界Z轴) -->
+                <!-- 段1: 下部桌腿+框架  link_1 Y: -0.175 ~ -0.025  世界Z: 0.470~0.620 -->
+                <geom type="box" size="0.147 0.075 0.147" pos="0.008 -0.100 0.003"
+                      condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                      group="3" rgba="0 0 0 0" name="t22508_legs_col"/>
+                <!-- 段2: 中层搁板薄板  link_1 Y: -0.025 ~ -0.013  世界Z: 0.620~0.632 -->
+                <geom type="box" size="0.139 0.006 0.139" pos="0.007 -0.0189 0.002"
+                      condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                      group="3" rgba="0 0 0 0" name="t22508_shelf_col"/>
+                <!-- 段3: 上部桌面  link_1 Y: +0.080 ~ +0.152  世界Z: 0.725~0.797 -->
+                <!-- 马克杯顶部在 link_1 Y≈+0.067，此段从+0.080开始留出 13mm 间隙 -->
+                <geom type="box" size="0.147 0.036 0.147" pos="0.008 0.116 0.003"
+                      condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                      group="3" rgba="0 0 0 0" name="t22508_top_col"/>
+                <!-- link_0: 抽屉, range=[0, 0.205m] (0.82m × 0.25) -->
+                <body name="table_22508_drawer">
+                    <joint name="table_22508_drawer_slide" type="slide" axis="0 0 1"
+                           range="0 0.205" damping="2" frictionloss="0.5"/>
+                    <inertial pos="0.007 -0.059 0.025" mass="0.3"
+                              diaginertia="0.001 0.001 0.001"/>
+                    <geom type="mesh" mesh="t22508_drawer" material="t22508_wood"
+                          contype="0" conaffinity="0" group="2" name="t22508_drawer_visual"/>
+                    <geom type="box" size="0.116 0.034 0.132" pos="0.007 -0.059 0.025"
+                          condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                          group="3" rgba="0 0 0 0" name="t22508_drawer_col"/>
+                </body>
+            </body>
+        </body>
+
         <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
 
         <!-- Side camera: fixed third-person view from upper-left of table (robot's perspective) -->
@@ -106,17 +145,13 @@
     <include file="setting.xml"/>
 
     <keyframe>
-        <!-- qpos: 12 robot joints (6 arm + 6 gripper) + 6*7 free bodies = 54 -->
-        <!-- bodies: apple, block, dog, kong, panda, mug -->
+        <!-- qpos: 12 robot + 7 mug + 7 table_22508_free + 1 drawer = 27 -->
+        <!-- bodies: mug, table_22508(+drawer)  [apple/block/dog/kong/panda 已注释] -->
         <!-- ctrl: 7 actuators (6 arm + 1 gripper) -->
         <key name="home" qpos="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
-        0.46 -0.14 0.5 1.0 0.0 0.0 0.0
-        0.52 -0.03 0.47 1.0 0.0 0.0 0.0
-        0.46 0.07 0.47 1.0 0.0 0.0 0.0
-        0.56 0.14 0.47 1.0 0.0 0.0 0.0
-        0.56 -0.11 0.47 1.0 0.0 0.0 0.0
-        0.50 0.18 0.47 0.0 0.0 0.0 1.0" ctrl="
+        0.50 -0.018 0.6317 0.0 0.0 0.0 1.0
+        0.58 -0.05 0.645 1.0 0.0 0.0 0.0 0.0" ctrl="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0"/>
     </keyframe>
 </mujoco>
