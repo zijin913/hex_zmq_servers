@@ -32,6 +32,7 @@
         ],
         "cam_type": "realsense",
         "headless": false,
-        "sens_ts": true
+        "sens_ts": true,
+        "scene_name": "scene"
     }
 }

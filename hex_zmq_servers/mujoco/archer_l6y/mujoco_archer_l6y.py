@@ -68,7 +68,8 @@ class HexMujocoArcherL6Y(HexMujocoBase):
                 f"mujoco_config is not valid, missing key: {missing_key}")
 
         # mujoco init
-        model_path = os.path.join(os.path.dirname(__file__), "model/scene.xml")
+        scene_name = mujoco_config.get("scene_name", "scene")
+        model_path = os.path.join(os.path.dirname(__file__), f"model/{scene_name}.xml")
         self.__model = mujoco.MjModel.from_xml_path(model_path)
         self.__data = mujoco.MjData(self.__model)
         self.__sim_rate = int(1.0 / self.__model.opt.timestep)
