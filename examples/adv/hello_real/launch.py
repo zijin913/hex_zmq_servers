@@ -13,23 +13,23 @@ from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 
 # robot model config
 ARM_TYPE = "firefly_y6"
-GRIPPER_TYPE = "empty"
+GRIPPER_TYPE = "gp80"
 
 # server ports
 HELLO_SRV_PORT = 12345
 HEXARM_SRV_PORT = 12346
 
 # device config
-HELLO_DEVICE_IP = "172.18.13.251"
+HELLO_DEVICE_IP = "172.18.24.90"
 HELLO_DEVICE_PORT = 8439
-HEXARM_DEVICE_IP = "172.18.22.245"
-HEXARM_DEVICE_PORT = 8439
+HEXARM_DEVICE_IP = "172.18.24.90"
+HEXARM_DEVICE_PORT = 9439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HEX_ZMQ_SERVERS_DIR = f"{SCRIPT_DIR}/../../../hex_zmq_servers"
-MIT_KP = [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0]
-MIT_KD = [10.0, 10.0, 10.0, 6.0, 0.31, 0.31, 1.0]
+MIT_KP = [400.0, 400.0, 500.0, 200.0, 100.0, 100.0, 10.0]
+MIT_KD = [5.0, 5.0, 5.0, 5.0, 2.0, 2.0, 0.5]
 NODE_PARAMS_DICT = {
     "hello_real_cli": {
         "name": "hello_real_cli",

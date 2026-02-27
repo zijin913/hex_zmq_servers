@@ -11,13 +11,14 @@ import numpy as np
 from collections import deque
 
 from ..cam_base import HexCamBase
-from ...zmq_base import (
-    hex_ns_now,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 import pyrealsense2 as rs
+
+from hex_robo_utils import (
+    ns_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
+)
 
 CAMERA_CONFIG = {
     "serial_number": '243422073194',
@@ -110,7 +111,7 @@ class HexCamRealsense(HexCamBase):
         stop_event = hex_queues[2]
 
         frames = self.__pipeline.wait_for_frames()
-        bias_ns = np.int64(hex_ns_now()) - np.int64(
+        bias_ns = np.int64(ns_now()) - np.int64(
             frames.get_frame_metadata(rs.frame_metadata_value.sensor_timestamp)
             * 1_000)
 
@@ -120,7 +121,7 @@ class HexCamRealsense(HexCamBase):
             # read frame
             aligned_frames = self.__align.process(
                 self.__pipeline.wait_for_frames())
-            cur_ns = hex_zmq_ts_now()
+            cur_ns = hex_ts_now()
             sen_ts_ns = bias_ns + np.int64(
                 aligned_frames.get_frame_metadata(
                     rs.frame_metadata_value.sensor_timestamp) * 1_000)
@@ -128,7 +129,7 @@ class HexCamRealsense(HexCamBase):
                 "s": sen_ts_ns // 1_000_000_000,
                 "ns": sen_ts_ns % 1_000_000_000,
             }
-            if hex_zmq_ts_delta_ms(cur_ns, sen_ts) < 0:
+            if hex_ts_delta_ms(cur_ns, sen_ts) < 0:
                 sen_ts = cur_ns
 
             # collect rgb frame

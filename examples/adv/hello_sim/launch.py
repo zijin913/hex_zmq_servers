@@ -20,8 +20,8 @@ HELLO_SRV_PORT = 12345
 MUJOCO_SRV_PORT = 12346
 
 # device config
-DEVICE_IP = "172.18.13.251"
-HELLO_DEVICE_PORT = 8439
+DEVICE_IP = "172.18.22.245"
+HELLO_DEVICE_PORT = 9439
 
 # node params
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

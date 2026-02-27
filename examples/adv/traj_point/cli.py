@@ -9,13 +9,15 @@
 import argparse, json, time
 import numpy as np
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
-from hex_robo_utils import HexPlotUtilPlotJuggler as HexPlotUtil
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexPlotUtilPlotJuggler as HexPlotUtil,
+    HexRate,
+)
 
 INIT_JOINT = np.array(
     [0.0, -0.0205679922, 2.57081467, -0.978840246, 0.0, 0.0],

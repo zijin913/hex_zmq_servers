@@ -8,8 +8,12 @@
 
 import numpy as np
 from collections import deque
-from ...zmq_base import HexRate, hex_zmq_ts_now
 from ..mujoco_base import HexMujocoClientBase
+
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_now,
+)
 
 NET_CONFIG = {
     "ip": "127.0.0.1",
@@ -207,7 +211,7 @@ class HexMujocoE3DesktopClient(HexMujocoClientBase):
         hdr, _ = self.request(
             {
                 "cmd": req_cmd,
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._cmds_seq[robot_name],
             },
             cmds,

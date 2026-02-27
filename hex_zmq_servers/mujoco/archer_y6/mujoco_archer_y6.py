@@ -17,15 +17,16 @@ import mujoco
 from mujoco import viewer
 
 from ..mujoco_base import HexMujocoBase
-from ...zmq_base import (
-    hex_ns_now,
-    hex_zmq_ts_now,
-    ns_to_hex_zmq_ts,
-    hex_zmq_ts_delta_ms,
-    HexRate,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
-from hex_robo_utils import HexCtrlUtilMitJoint as CtrlUtil
+
+from hex_robo_utils import (
+    HexCtrlUtilMitJoint as CtrlUtil,
+    HexRate,
+    ns_now,
+    hex_ts_delta_ms,
+    hex_ts_now,
+    ns_to_hex_ts,
+)
 
 MUJOCO_CONFIG = {
     "states_rate": 1000,
@@ -178,8 +179,8 @@ class HexMujocoArcherY6(HexMujocoBase):
         rate = HexRate(self.__sim_rate)
         states_trig_count = 0
         img_trig_count = 0
-        self.__bias_ns = hex_ns_now() - self.__data.time * 1_000_000_000
-        init_ts = self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now()
+        self.__bias_ns = ns_now() - self.__data.time * 1_000_000_000
+        init_ts = self.__mujoco_ts() if self.__sens_ts else hex_ts_now()
         rgb_queue.append((init_ts, 0,
                           np.zeros((self.__height, self.__width, 3),
                                    dtype=np.uint8)))
@@ -194,7 +195,7 @@ class HexMujocoArcherY6(HexMujocoBase):
                 # states
                 ts, states_robot, states_obj = self.__get_states()
                 if states_robot is not None:
-                    if hex_zmq_ts_delta_ms(ts, last_states_ts) > 1e-6:
+                    if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                         last_states_ts = ts
                         # states robot
                         states_robot_queue.append(
@@ -219,7 +220,7 @@ class HexMujocoArcherY6(HexMujocoBase):
                     ts, seq, cmds_robot_get = cmds_robot_pack
                     if seq != last_cmds_robot_seq:
                         last_cmds_robot_seq = seq
-                        if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                        if hex_ts_delta_ms(hex_ts_now(), ts) < 200.0:
                             cmds_robot = cmds_robot_get.copy()
                 if cmds_robot is not None:
                     self.__set_cmds(cmds_robot)
@@ -259,7 +260,7 @@ class HexMujocoArcherY6(HexMujocoBase):
         eff = copy.deepcopy(self.__data.qfrc_actuator)
         pos[self.__state_idx["robot_gripper"]] = pos[
             self.__state_idx["robot_gripper"]] * self.__gripper_ratio
-        return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
+        return self.__mujoco_ts() if self.__sens_ts else hex_ts_now(
         ), np.array([
             pos[self.__state_idx["robot_arm"] +
                 self.__state_idx["robot_gripper"]],
@@ -322,19 +323,19 @@ class HexMujocoArcherY6(HexMujocoBase):
     def __get_rgb(self):
         self.__rgb_cam.update_scene(self.__data, "end_camera")
         rgb_img = self.__rgb_cam.render()
-        return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
+        return self.__mujoco_ts() if self.__sens_ts else hex_ts_now(
         ), cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
 
     def __get_depth(self):
         self.__depth_cam.update_scene(self.__data, "end_camera")
         depth_m = self.__depth_cam.render().astype(np.float32)
         depth_img = np.clip(depth_m * 1000.0, 0, 65535).astype(np.uint16)
-        return self.__mujoco_ts() if self.__sens_ts else hex_zmq_ts_now(
+        return self.__mujoco_ts() if self.__sens_ts else hex_ts_now(
         ), depth_img
 
     def __mujoco_ts(self):
         mujoco_ts = self.__data.time * 1_000_000_000 + self.__bias_ns
-        return ns_to_hex_zmq_ts(mujoco_ts)
+        return ns_to_hex_ts(mujoco_ts)
 
     def close(self):
         if not self._working.is_set():

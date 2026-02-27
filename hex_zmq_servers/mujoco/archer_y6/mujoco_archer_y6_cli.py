@@ -7,7 +7,8 @@
 ################################################################
 
 from ..mujoco_base import HexMujocoClientBase
-from ...zmq_base import HexRate
+
+from hex_robo_utils import HexRate
 
 NET_CONFIG = {
     "ip": "127.0.0.1",

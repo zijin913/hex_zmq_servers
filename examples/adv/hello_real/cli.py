@@ -9,13 +9,15 @@
 import argparse, json, time
 import numpy as np
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHelloClient,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexRate,
+)
 
 
 def wait_client_working(client, timeout: float = 5.0) -> bool:
@@ -43,7 +45,8 @@ def interp_arm(cur_q,
                tar_joint,
                grip_tar=None,
                dofs: dict = None,
-               err_limit=0.05):
+               err_limit=0.05,
+               grip_err_limit=None):
     mid_joint = np.zeros(dofs["sum"])
     mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
         cur_q[:dofs["robot_arm"]],
@@ -54,7 +57,8 @@ def interp_arm(cur_q,
         mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
             cur_q[-dofs["robot_gripper"]:],
             grip_tar,
-            err_limit=err_limit,
+            err_limit=grip_err_limit
+            if grip_err_limit is not None else err_limit,
         )
     return mid_joint, interp_flag
 
@@ -120,7 +124,9 @@ def main():
     init_flag = True
     init_limit = 0.03
     runtime_limit = 0.2
+    grip_err_limit = 0.5
     hello_client.set_rgbs(np.array([255, 255, 0]))
+    grip_cmd, grip_ratio, grip_threshold = None, 0.7, 0.5
     rate = HexRate(500)
     while True:
         # gello
@@ -143,14 +149,23 @@ def main():
             if hello_cmds is not None:
                 grip_tar = None
                 if hexarm_dofs["robot_gripper"] is not None:
-                    grip_tar = gripper_d + gripper_k * hello_cmds[
-                        -hexarm_dofs["robot_gripper"]:, 0].copy()
+                    if grip_cmd is None:
+                        grip_cmd = hello_cmds[-hexarm_dofs["robot_gripper"]:, 0].copy()
+                    else:
+                        grip_cmd = hello_cmds[-hexarm_dofs["robot_gripper"]:, 0] * grip_ratio + grip_cmd * (1 - grip_ratio)
+                    modified_grip_cmds = np.zeros_like(grip_cmd)
+                    large_mask = grip_cmd  > grip_threshold
+                    small_mask = grip_cmd < -grip_threshold
+                    modified_grip_cmds[large_mask] = 1.0
+                    modified_grip_cmds[small_mask] = -1.0
+                    grip_tar = gripper_d + gripper_k * modified_grip_cmds
                 mid_q, interp_flag = interp_arm(
                     cur_q,
                     hello_cmds[:hexarm_dofs["robot_arm"], 0],
                     grip_tar=grip_tar,
                     dofs=hexarm_dofs,
                     err_limit=init_limit if init_flag else runtime_limit,
+                    grip_err_limit=grip_err_limit,
                 )
                 tar_dq = np.zeros(hexarm_dofs["sum"])
                 if not interp_flag:

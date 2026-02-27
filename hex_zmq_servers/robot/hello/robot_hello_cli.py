@@ -7,7 +7,10 @@
 ################################################################
 
 from ..robot_base import HexRobotClientBase
-from ...zmq_base import hex_zmq_ts_now, HexRate
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_now,
+)
 
 import numpy as np
 from collections import deque
@@ -48,7 +51,7 @@ class HexRobotHelloClient(HexRobotClientBase):
         hdr, rgbs = self.request(
             {
                 "cmd": "set_rgbs",
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._rgbs_seq,
             },
             rgbs,

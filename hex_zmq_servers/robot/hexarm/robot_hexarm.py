@@ -12,12 +12,13 @@ import numpy as np
 from collections import deque
 
 from ..robot_base import HexRobotBase
-from ...zmq_base import (
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
-    HexRate,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
+
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
+)
 from hex_device import HexDeviceApi, Arm, Hands
 from hex_device.motor_base import CommandType
 
@@ -141,7 +142,7 @@ class HexRobotHexarm(HexRobotBase):
         cmds_queue = hex_queues[1]
         stop_event = hex_queues[2]
 
-        last_states_ts = hex_zmq_ts_now()
+        last_states_ts = hex_ts_now()
         states_count = 0
         last_cmds_seq = -1
         rate = HexRate(2000)
@@ -149,7 +150,7 @@ class HexRobotHexarm(HexRobotBase):
             # states
             ts, states = self.__get_states()
             if states is not None:
-                if hex_zmq_ts_delta_ms(ts, last_states_ts) > 1e-6:
+                if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
@@ -165,7 +166,7 @@ class HexRobotHexarm(HexRobotBase):
                 ts, seq, cmds = cmds_pack
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
-                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                    if hex_ts_delta_ms(hex_ts_now(), ts) < 200.0:
                         self.__set_cmds(cmds)
 
             # sleep
@@ -179,11 +180,10 @@ class HexRobotHexarm(HexRobotBase):
             return None, None
 
         # (arm_dofs, 3) # pos vel eff
-        if self.__arm_state_buffer is None:
-            self.__arm_state_buffer = self.__arm.get_simple_motor_status()
+        self.__arm_state_buffer = self.__arm.get_simple_motor_status()
 
         # (gripper_dofs, 3) # pos vel eff
-        if self.__gripper is not None and self.__gripper_state_buffer is None:
+        if self.__gripper is not None:
             self.__gripper_state_buffer = self.__gripper.get_simple_motor_status(
             )
 
@@ -194,7 +194,7 @@ class HexRobotHexarm(HexRobotBase):
             gripper_ts = self.__gripper_state_buffer[
                 'ts'] if self.__gripper is not None else arm_ts
 
-            delta_ms = hex_zmq_ts_delta_ms(arm_ts, gripper_ts)
+            delta_ms = hex_ts_delta_ms(arm_ts, gripper_ts)
             if np.fabs(delta_ms) < 1e-6:
                 pos = self.__arm_state_buffer['pos']
                 vel = self.__arm_state_buffer['vel']
@@ -210,7 +210,7 @@ class HexRobotHexarm(HexRobotBase):
 
                 state = np.array([pos, vel, eff]).T
                 self.__arm_state_buffer, self.__gripper_state_buffer = None, None
-                return arm_ts if self.__sens_ts else hex_zmq_ts_now(), state
+                return arm_ts if self.__sens_ts else hex_ts_now(), state
             elif delta_ms > 0.0:
                 self.__gripper_state_buffer = None
                 return None, None
@@ -263,15 +263,15 @@ class HexRobotHexarm(HexRobotBase):
                 raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
         else:
             raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
-        tar_pos = self._apply_pos_limits(
-            cmd_pos,
-            self._limits[:, 0, 0],
-            self._limits[:, 0, 1],
-        )
 
         # arm
+        arm_tar_pos = self._apply_pos_limits(
+            cmd_pos[self.__motor_idx["robot_arm"]],
+            self._limits[self.__motor_idx["robot_arm"], 0, 0],
+            self._limits[self.__motor_idx["robot_arm"], 0, 1],
+        )
         arm_cmd = self.__arm.construct_mit_command(
-            tar_pos[self.__motor_idx["robot_arm"]],
+            arm_tar_pos,
             tar_vel[self.__motor_idx["robot_arm"]],
             cmd_tor[self.__motor_idx["robot_arm"]],
             cmd_kp[self.__motor_idx["robot_arm"]],
@@ -279,16 +279,22 @@ class HexRobotHexarm(HexRobotBase):
         )
         self.__arm.motor_command(CommandType.MIT, arm_cmd)
 
-        # gripper
         if self.__gripper is not None:
-            gripper_cmd = self.__gripper.construct_mit_command(
-                tar_pos[self.__motor_idx["robot_gripper"]],
-                tar_vel[self.__motor_idx["robot_gripper"]],
-                cmd_tor[self.__motor_idx["robot_gripper"]],
-                cmd_kp[self.__motor_idx["robot_gripper"]],
-                cmd_kd[self.__motor_idx["robot_gripper"]],
+            # gripper
+            gripper_tar_pos = np.clip(
+                cmd_pos[self.__motor_idx["robot_gripper"]],
+                self._limits[self.__motor_idx["robot_gripper"], 0, 0],
+                self._limits[self.__motor_idx["robot_gripper"], 0, 1],
             )
-            self.__gripper.motor_command(CommandType.MIT, gripper_cmd)
+            if self.__gripper is not None:
+                gripper_cmd = self.__gripper.construct_mit_command(
+                    gripper_tar_pos,
+                    tar_vel[self.__motor_idx["robot_gripper"]],
+                    cmd_tor[self.__motor_idx["robot_gripper"]],
+                    cmd_kp[self.__motor_idx["robot_gripper"]],
+                    cmd_kd[self.__motor_idx["robot_gripper"]],
+                )
+                self.__gripper.motor_command(CommandType.MIT, gripper_cmd)
 
         return True
 
