@@ -65,6 +65,11 @@ hello_real/
     ...
     ```
 
+    **Note**: The Hello’s LED indicates the robot’s status.
+    - **Yellow：** The robots are initializing. If the LED stays yellow for more than 20 seconds, please lift the Hello slightly and hold it still.
+    - **Green：** The robots are operating normally.
+    - **Red：** The robots are not connected.
+
 ## Safety Notice
 
 - ⚠️ Make sure there is enough safe space around the robot and you can cut off power at any time.
