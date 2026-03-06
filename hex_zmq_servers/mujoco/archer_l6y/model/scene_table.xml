@@ -126,7 +126,7 @@
             </body>
         </body>
 
-        <geom name="tar_plane" pos="0.4 0.25 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
+        <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
 
         <!-- Side camera: fixed third-person view from upper-left of table (robot's perspective) -->
         <body name="side_camera_mount" pos="0 0 0">
