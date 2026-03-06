@@ -53,8 +53,8 @@
     <texture name="scanned_mug_tex" type="2d" file="scanned_mug/texture.png"/>
     <material name="scanned_mug_mat" texture="scanned_mug_tex" specular="0.5" shininess="0.5"/>
 
-    <!-- PartNet-Mobility Table id=22508 (带抽屉小桌, 顶点已缩放50%,再×0.5=总计25%原始大小,约0.30x0.30x0.33m) -->
-    <mesh name="t22508_body" file="partnet_table_22508/table_22508_body.obj" scale="0.5 0.5 0.5"/>
-    <mesh name="t22508_drawer" file="partnet_table_22508/table_22508_drawer.obj" scale="0.5 0.5 0.5"/>
+    <!-- PartNet-Mobility Table id=22508 (带抽屉小桌, 顶点已缩放50%,再×0.65=总计32.5%原始大小) -->
+    <mesh name="t22508_body" file="partnet_table_22508/table_22508_body.obj" scale="0.65 0.65 0.65"/>
+    <mesh name="t22508_drawer" file="partnet_table_22508/table_22508_drawer.obj" scale="0.65 0.65 0.65"/>
     <material name="t22508_wood" rgba="0.2 0.11 0.075 1" specular="0.3" shininess="0.3"/>
 </mujocoinclude>
