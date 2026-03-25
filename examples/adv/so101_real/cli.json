@@ -1,0 +1,14 @@
+{
+    "so101_urdf_path": "",
+    "hexarm_model_path": "",
+    "last_link": "link_6",
+    "use_gripper": true,
+    "workspace_scale": 1.5,
+    "gripper_scale": 1.0,
+    "so101_net_cfg": {
+        "port": 12345
+    },
+    "hexarm_net_cfg": {
+        "port": 12346
+    }
+}

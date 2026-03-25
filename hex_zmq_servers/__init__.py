@@ -105,6 +105,7 @@ from importlib.util import find_spec
 _HAS_BERXEL = find_spec("berxel_py_wrapper") is not None
 _HAS_REALSENSE = find_spec("pyrealsense2") is not None
 _HAS_MUJOCO = find_spec("mujoco") is not None
+_HAS_SCSERVO = find_spec("scservo_sdk") is not None
 
 # Optional: berxel
 if _HAS_BERXEL:
@@ -176,6 +177,23 @@ if _HAS_MUJOCO:
         "HexMujocoE3Desktop",
         "HexMujocoE3DesktopClient",
         "HexMujocoE3DesktopServer",
+    ])
+
+# Optional: SO-101 (requires scservo_sdk / feetech-servo-sdk)
+if _HAS_SCSERVO:
+    from .robot import HexRobotSO101, HexRobotSO101Client, HexRobotSO101Server
+    HEX_ZMQ_SERVERS_PATH_DICT.update({
+        "robot_so101":
+        f"{file_dir}/robot/so101/robot_so101_srv.py",
+    })
+    HEX_ZMQ_CONFIGS_PATH_DICT.update({
+        "robot_so101":
+        f"{file_dir}/config/robot_so101.json",
+    })
+    __all__.extend([
+        "HexRobotSO101",
+        "HexRobotSO101Client",
+        "HexRobotSO101Server",
     ])
 
 # print("#### Thanks for using hex_zmq_servers :D ####")

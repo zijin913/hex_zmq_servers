@@ -35,3 +35,14 @@ __all__ = [
     "HexRobotHexarmClient",
     "HexRobotHexarmServer",
 ]
+
+# Optional: SO-101 (requires scservo_sdk / feetech-servo-sdk)
+try:
+    from .so101 import HexRobotSO101, HexRobotSO101Client, HexRobotSO101Server
+    __all__.extend([
+        "HexRobotSO101",
+        "HexRobotSO101Client",
+        "HexRobotSO101Server",
+    ])
+except ImportError:
+    pass

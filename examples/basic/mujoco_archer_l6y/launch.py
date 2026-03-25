@@ -28,7 +28,7 @@ NODE_PARAMS_DICT = {
                 "mit_kd": [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
                 "cam_type": "realsense",
                 # 场景切换: "scene"(默认,物体场景) 或 "scene_table"(桌子场景)
-                "scene_name": "scene_table",
+                "scene_name": "scene",
             },
         },
     },
