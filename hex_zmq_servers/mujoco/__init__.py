@@ -9,6 +9,7 @@
 from .mujoco_base import HexMujocoBase, HexMujocoClientBase, HexMujocoServerBase
 from .archer_y6 import HexMujocoArcherY6, HexMujocoArcherY6Client, HexMujocoArcherY6Server
 from .archer_l6y import HexMujocoArcherL6Y, HexMujocoArcherL6YClient, HexMujocoArcherL6YServer
+from .archer_l6y import HexMujocoArcherL6YDual, HexMujocoArcherL6YDualClient, HexMujocoArcherL6YDualServer
 from .e3_desktop import HexMujocoE3Desktop, HexMujocoE3DesktopClient, HexMujocoE3DesktopServer
 
 __all__ = [
@@ -26,6 +27,9 @@ __all__ = [
     "HexMujocoArcherL6Y",
     "HexMujocoArcherL6YClient",
     "HexMujocoArcherL6YServer",
+    "HexMujocoArcherL6YDual",
+    "HexMujocoArcherL6YDualClient",
+    "HexMujocoArcherL6YDualServer",
 
     # e3_desktop
     "HexMujocoE3Desktop",
