@@ -56,8 +56,8 @@ VIO_PORT = 5005
 POSITION_SCALE = 1.0
 ROTATION_SCALE = 1.0
 INTERP_ERR_LIMIT = 0.005  # 真机更小，运动更柔和
-POS_DEADZONE = 0.005
-ROT_DEADZONE = 0.03
+POS_DEADZONE = 0.02
+ROT_DEADZONE = 0.07
 
 DROPOUT_TIMEOUT = 0.5
 RECENTER_TIMEOUT = 3.0
@@ -134,7 +134,7 @@ def main():
     # ---- 等待 iPhone ----
     print(f"\n等待 iPhone VIO 数据 (UDP:{VIO_PORT})...")
     while True:
-        T_iphone, ts, cnt, _, _ = vio.get_pose()
+        T_iphone, ts, cnt, _, _, _ = vio.get_pose()
         if T_iphone is not None:
             print(f"收到! ({cnt} 帧)")
             break
@@ -197,7 +197,7 @@ def main():
     print("已到 home!")
 
     # ---- 记录参考位姿 ----
-    T_iphone_ref, _, _, _, _ = vio.get_pose()
+    T_iphone_ref, _, _, _, _, _ = vio.get_pose()
     if T_iphone_ref is None:
         T_iphone_ref = T_iphone.copy()
     T_iphone_ref_inv = np.linalg.inv(T_iphone_ref)
@@ -250,12 +250,22 @@ def main():
                 last_tau[:-1] = c_mat @ arm_dq + g_vec
 
             # 2. 读 iPhone 位姿
-            T_iphone, vio_ts, vio_count, vio_gripper, vio_clutch = vio.get_pose()
+            T_iphone, vio_ts, vio_count, vio_gripper, vio_clutch, vio_home = vio.get_pose()
             now = time.time()
 
             if vio_count > last_recv_count:
                 last_recv_count = vio_count
                 last_recv_time = now
+
+                # HOME 按钮
+                if vio_home:
+                    tar_pos = home_pos.copy()
+                    tar_quat = home_quat.copy()
+                    smooth_pos = home_pos.copy()
+                    smooth_quat = home_quat.copy()
+                    clutch_base_T = T_home_ee.copy()
+                    tar_joint = HEXARM_HOME.copy()
+                    print(f">>> HOME — 回到 home")
 
                 # Clutch
                 if vio_clutch and not was_clutch_active:
@@ -366,7 +376,7 @@ def main():
             if key == ord('q'):
                 break
             elif key == ord('r'):
-                T_cur, _, _, _, _ = vio.get_pose()
+                T_cur, _, _, _, _, _ = vio.get_pose()
                 if T_cur is not None:
                     T_iphone_ref = T_cur.copy()
                     T_iphone_ref_inv = np.linalg.inv(T_iphone_ref)

@@ -145,9 +145,9 @@ class HexMujocoArcherL6YDualServer(HexMujocoServerBase):
             delta = (seq - cmds_seq) % self._max_seq_num
             if delta >= 0 and delta < 1e6:
                 if robot_name == "left":
-                    self._cmds_left_seq = cmds_seq
+                    self._cmds_left_seq = seq
                 elif robot_name == "right":
-                    self._cmds_right_seq = cmds_seq
+                    self._cmds_right_seq = seq
                 queue.append((recv_hdr["ts"], seq, recv_buf))
                 return self.no_ts_hdr(recv_hdr, True), None
             else:

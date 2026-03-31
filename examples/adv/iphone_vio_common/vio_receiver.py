@@ -34,6 +34,7 @@ class iPhoneVIOReceiver:
         self._recv_count = 0
         self._gripper_value = 0.0  # 0.0=全开, 1.0=全闭
         self._clutch_active = False  # clutch 是否激活
+        self._home_requested = False  # HOME 按钮
 
         self._running = True
         self._thread = threading.Thread(target=self._recv_loop, daemon=True)
@@ -52,6 +53,7 @@ class iPhoneVIOReceiver:
 
                     gripper = float(floats[16]) if len(floats) > 16 else 0.0
                     clutch = float(floats[17]) > 0.5 if len(floats) > 17 else True
+                    home = float(floats[18]) > 0.5 if len(floats) > 18 else False
 
                     with self._lock:
                         self._latest_matrix = T
@@ -59,6 +61,7 @@ class iPhoneVIOReceiver:
                         self._recv_count += 1
                         self._gripper_value = np.clip(gripper, 0.0, 1.0)
                         self._clutch_active = clutch
+                        self._home_requested = home
             except BlockingIOError:
                 time.sleep(0.001)
             except Exception as e:
@@ -78,8 +81,8 @@ class iPhoneVIOReceiver:
         """
         with self._lock:
             if self._latest_matrix is not None:
-                return self._latest_matrix.copy(), self._latest_timestamp, self._recv_count, self._gripper_value, self._clutch_active
-            return None, 0.0, 0, 0.0, False
+                return self._latest_matrix.copy(), self._latest_timestamp, self._recv_count, self._gripper_value, self._clutch_active, self._home_requested
+            return None, 0.0, 0, 0.0, False, False
 
     def close(self):
         self._running = False

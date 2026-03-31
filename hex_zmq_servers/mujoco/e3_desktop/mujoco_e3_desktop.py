@@ -75,8 +75,8 @@ class HexMujocoE3Desktop(HexMujocoBase):
         self.__sim_rate = int(1.0 / self.__model.opt.timestep)
 
         # state init
-        self.__state_left_idx = [0, 1, 2, 3, 4, 5, 6]
-        self.__state_right_idx = [12, 13, 14, 15, 16, 17, 18]
+        self.__state_left_idx = [0, 1, 2, 3, 4, 5, 8]
+        self.__state_right_idx = [12, 13, 14, 15, 16, 17, 20]
         self.__obj_pose_idx = [24, 25, 26, 27, 28, 29, 30]
         self.__ctrl_left_idx = [0, 1, 2, 3, 4, 5, 6]
         self.__ctrl_right_idx = [7, 8, 9, 10, 11, 12, 13]

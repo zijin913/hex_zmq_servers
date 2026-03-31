@@ -194,7 +194,7 @@ def main():
     print(f"\n等待 iPhone VIO 数据 (UDP:{VIO_PORT})...")
     print("请打开 iPhone 上的 CameraPoseTracker app。")
     while True:
-        T_iphone, ts, cnt, _, _ = vio.get_pose()
+        T_iphone, ts, cnt, _, _, _ = vio.get_pose()
         if T_iphone is not None:
             print(f"收到 iPhone 数据! (已接收 {cnt} 帧)")
             break
@@ -251,12 +251,22 @@ def main():
                 tau_comp = np.concatenate((c_mat @ arm_dq + g_vec, np.zeros(1)))
 
             # 2. 读 iPhone 位姿
-            T_iphone, vio_ts, vio_count, vio_gripper, vio_clutch = vio.get_pose()
+            T_iphone, vio_ts, vio_count, vio_gripper, vio_clutch, vio_home = vio.get_pose()
             now = time.time()
 
             if vio_count > last_recv_count:
                 last_recv_count = vio_count
                 last_recv_time = now
+
+                # HOME 按钮
+                if vio_home:
+                    tar_pos = home_pos.copy()
+                    tar_quat = home_quat.copy()
+                    smooth_pos = home_pos.copy()
+                    smooth_quat = home_quat.copy()
+                    clutch_base_T = T_home_ee.copy()
+                    tar_joint = HEXARM_HOME.copy()
+                    print(f">>> HOME — 回到 home")
 
                 # Clutch 状态变化检测
                 if vio_clutch and not was_clutch_active:
@@ -389,7 +399,7 @@ def main():
                 break
             elif key == ord('r'):
                 # Recenter
-                T_iphone_cur, _, _, _, _ = vio.get_pose()
+                T_iphone_cur, _, _, _, _, _ = vio.get_pose()
                 if T_iphone_cur is not None:
                     T_iphone_ref = T_iphone_cur.copy()
                     T_iphone_ref_inv = np.linalg.inv(T_iphone_ref)
