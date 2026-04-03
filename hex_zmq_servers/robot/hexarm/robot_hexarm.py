@@ -35,6 +35,8 @@ ROBOT_CONFIG = {
 HEX_DEVICE_TYPE_DICT = {
     "archer_y6": 16,
     "archer_l6y": 17,
+    "archer_y6_h1": 25,
+    "firefly_y6_h1": 27,
 }
 
 
@@ -155,7 +157,7 @@ class HexRobotHexarm(HexRobotBase):
                 ts, seq, cmds = cmds_pack
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
-                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) < 200.0:
+                    if hex_zmq_ts_delta_ms(hex_zmq_ts_now(), ts) or True:
                         self.__set_cmds(cmds)
 
             # sleep
