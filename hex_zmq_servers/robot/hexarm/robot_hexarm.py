@@ -272,16 +272,14 @@ class HexRobotHexarm(HexRobotBase):
         )
         self.__arm_archer.motor_command(CommandType.MIT, mit_cmd)
 
-        # gripper
+        # gripper — use POSITION control (Hands device requires it, MIT is ignored)
         if self.__gripper is not None:
-            mit_cmd = self.__gripper.construct_mit_command(
-                tar_pos[self.__arm_dofs:],
-                tar_vel[self.__arm_dofs:],
-                cmd_tor[self.__arm_dofs:],
-                cmd_kp[self.__arm_dofs:],
-                cmd_kd[self.__arm_dofs:],
-            )
-            self.__gripper.motor_command(CommandType.MIT, mit_cmd)
+            try:
+                gripper_pos = tar_pos[self.__arm_dofs:]
+                self.__gripper.motor_command(CommandType.POSITION, gripper_pos)
+            except (ValueError, Exception):
+                # Hands device may raise if motor data not yet available
+                pass
 
         return True
 
