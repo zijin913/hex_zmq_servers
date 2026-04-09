@@ -57,6 +57,7 @@ class HexCamClientBase(HexZMQClientBase):
         self._rgb_queue = deque(maxlen=self._deque_maxlen)
         self._depth_queue = deque(maxlen=self._deque_maxlen)
         self._rgbd_queue = deque(maxlen=self._deque_maxlen)
+        self._recv_loop_hz = net_config.get("recv_loop_hz", 200)
 
     def __del__(self):
         HexZMQClientBase.__del__(self)
@@ -170,7 +171,7 @@ class HexCamClientBase(HexZMQClientBase):
             return None, None
 
     def _recv_loop(self):
-        rate = HexRate(200)
+        rate = HexRate(self._recv_loop_hz)
         while self._recv_flag:
             # Use get_rgbd for synchronized frames (1 request instead of 2)
             hdr, rgb, depth = self._get_rgbd_inner()

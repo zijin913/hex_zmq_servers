@@ -104,6 +104,8 @@ class HexRobotClientBase(HexZMQClientBase):
         self._cmds_seq = 0
         self._states_queue = deque(maxlen=self._deque_maxlen)
         self._cmds_queue = deque(maxlen=1)
+        self._recv_loop_hz = net_config.get("recv_loop_hz", 2000)
+        self._last_sent_cmds_id = -1  # Track to avoid resending same command
 
     def __del__(self):
         HexZMQClientBase.__del__(self)
@@ -182,7 +184,7 @@ class HexRobotClientBase(HexZMQClientBase):
             return False
 
     def _recv_loop(self):
-        rate = HexRate(2000)
+        rate = HexRate(self._recv_loop_hz)
         while self._recv_flag:
             hdr, states = self._get_states_inner()
             if hdr is not None:
