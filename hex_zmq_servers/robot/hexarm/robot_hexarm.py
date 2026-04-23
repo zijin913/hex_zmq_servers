@@ -136,7 +136,7 @@ class HexRobotHexarm(HexRobotBase):
         last_states_ts = hex_zmq_ts_now()
         states_count = 0
         last_cmds_seq = -1
-        rate = HexRate(2000)
+        rate = HexRate(500)
         while self._working.is_set() and not stop_event.is_set():
             # states
             ts, states = self.__get_states()
