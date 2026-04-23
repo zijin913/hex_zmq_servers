@@ -49,6 +49,11 @@ class HexCamRealsenseServer(HexCamServerBase):
         elif cmd == "get_depth":
             return self._get_frame(recv_hdr, depth_flag=True)
 
+        # Handle get_rgbd (synchronized pair from the same sensor tick;
+        # base class pops rgb/depth together and packs into one buffer).
+        elif cmd == "get_rgbd":
+            return self._get_rgbd(recv_hdr)
+
         # Handle get_intri
         elif cmd == "get_intri":
             try:
