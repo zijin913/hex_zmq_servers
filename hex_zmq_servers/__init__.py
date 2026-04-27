@@ -147,6 +147,7 @@ if _HAS_MUJOCO:
     from .mujoco import HexMujocoArcherY6, HexMujocoArcherY6Client, HexMujocoArcherY6Server
     from .mujoco import HexMujocoArcherL6Y, HexMujocoArcherL6YClient, HexMujocoArcherL6YServer
     from .mujoco import HexMujocoArcherL6YDual, HexMujocoArcherL6YDualClient, HexMujocoArcherL6YDualServer
+    from .mujoco import HexMujocoFireflyY6Dual, HexMujocoFireflyY6DualClient, HexMujocoFireflyY6DualServer
     from .mujoco import HexMujocoE3Desktop, HexMujocoE3DesktopClient, HexMujocoE3DesktopServer
     HEX_ZMQ_SERVERS_PATH_DICT.update({
         "mujoco_archer_y6":
@@ -155,6 +156,8 @@ if _HAS_MUJOCO:
         f"{file_dir}/mujoco/archer_l6y/mujoco_archer_l6y_srv.py",
         "mujoco_archer_l6y_dual":
         f"{file_dir}/mujoco/archer_l6y/mujoco_archer_l6y_dual_srv.py",
+        "mujoco_firefly_y6_dual":
+        f"{file_dir}/mujoco/firefly_y6/mujoco_firefly_y6_dual_srv.py",
         "mujoco_e3_desktop":
         f"{file_dir}/mujoco/e3_desktop/mujoco_e3_desktop_srv.py",
     })
@@ -165,6 +168,8 @@ if _HAS_MUJOCO:
         f"{file_dir}/config/mujoco_archer_l6y.json",
         "mujoco_archer_l6y_dual":
         f"{file_dir}/config/mujoco_archer_l6y_dual.json",
+        "mujoco_firefly_y6_dual":
+        f"{file_dir}/config/mujoco_firefly_y6_dual.json",
         "mujoco_e3_desktop":
         f"{file_dir}/config/mujoco_e3_desktop.json",
     })
@@ -182,6 +187,9 @@ if _HAS_MUJOCO:
         "HexMujocoArcherL6YDual",
         "HexMujocoArcherL6YDualClient",
         "HexMujocoArcherL6YDualServer",
+        "HexMujocoFireflyY6Dual",
+        "HexMujocoFireflyY6DualClient",
+        "HexMujocoFireflyY6DualServer",
         "HexMujocoE3Desktop",
         "HexMujocoE3DesktopClient",
         "HexMujocoE3DesktopServer",
