@@ -95,9 +95,10 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
             self.__mit_kp = np.ascontiguousarray(np.asarray(self.__mit_kp))
             self.__mit_kd = np.ascontiguousarray(np.asarray(self.__mit_kd))
             self.__mit_ctrl = CtrlUtil()
-        # GR100 lobster claw: client commands gripper in [0, 0.55]; URDF/MJCF range is [0, 0.57].
-        # Compress advertised range to match client expectation.
-        self.__gripper_ratio = 0.55 / 0.57
+        # GR100 lobster claw: client commands and URDF/MJCF range are now both [0, 0.69]
+        # (measured upper limit). Keep ratio=1.0 — no scaling. If you ever want to
+        # advertise a smaller range than URDF allows, set ratio = (advertised / urdf_max).
+        self.__gripper_ratio = 1.0
         self._limits[0, -1] *= self.__gripper_ratio
         self._limits[1, -1] *= self.__gripper_ratio
         self._dofs = np.array([

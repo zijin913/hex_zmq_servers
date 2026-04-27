@@ -254,7 +254,7 @@
         <parent link="gripper_base_link" />
         <child link="gripper_left_link_1" />
         <axis xyz="-1 0 0" />
-        <limit lower="0.0" upper="0.57" effort="5" velocity="10" />
+        <limit lower="0.0" upper="0.9" effort="5" velocity="10" />
     </joint>
 
     <!-- Right claw (mimics left for visualization; hardware does the real mirroring) -->
@@ -284,7 +284,7 @@
         <parent link="gripper_base_link" />
         <child link="gripper_right_link_1" />
         <axis xyz="1 0 0" />
-        <limit lower="0.0" upper="0.57" effort="5" velocity="10" />
+        <limit lower="0.0" upper="0.9" effort="5" velocity="10" />
         <mimic joint="gripper_left_joint_1" multiplier="1.0" offset="0" />
     </joint>
 

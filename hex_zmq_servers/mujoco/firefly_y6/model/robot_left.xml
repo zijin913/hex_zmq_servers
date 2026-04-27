@@ -59,14 +59,14 @@
                                     <!-- left claw L1 (driven, axis=-X) -->
                                     <body name="left_gripper_left_link_1" pos="0 -0.015 0.076799">
                                         <inertial pos="0.01344 -0.02403 0.03494" mass="0.0281" diaginertia="0.0000229 0.0000184 0.0000063"/>
-                                        <joint name="left_gripper_left_joint_1" pos="0 0 0" axis="-1 0 0" range="0 0.57" limited="true" armature="0.01" damping="1.0" frictionloss="0.1"/>
+                                        <joint name="left_gripper_left_joint_1" pos="0 0 0" axis="-1 0 0" range="0 0.9" limited="true" armature="0.01" damping="1.0" frictionloss="0.1"/>
                                         <geom type="mesh" rgba="1 1 1 1" mesh="gripper_L1"/>
                                     </body>
 
                                     <!-- right claw L2 (mimics via equality, axis=+X) -->
                                     <body name="left_gripper_right_link_1" pos="0 0.015 0.076799">
                                         <inertial pos="0.01341 0.02402 0.03495" mass="0.0281" diaginertia="0.0000229 0.0000184 0.0000063"/>
-                                        <joint name="left_gripper_right_joint_1" pos="0 0 0" axis="1 0 0" range="0 0.57" limited="true" armature="0.01" damping="1.0" frictionloss="0.1"/>
+                                        <joint name="left_gripper_right_joint_1" pos="0 0 0" axis="1 0 0" range="0 0.9" limited="true" armature="0.01" damping="1.0" frictionloss="0.1"/>
                                         <geom type="mesh" rgba="1 1 1 1" mesh="gripper_L2"/>
                                     </body>
                                 </body>

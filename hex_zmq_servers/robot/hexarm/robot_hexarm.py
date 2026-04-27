@@ -102,6 +102,17 @@ class HexRobotHexarm(HexRobotBase):
             self.__gripper = self.__hex_api.find_optional_device_by_id(1)
             if self.__gripper is not None:
                 self.__gripper_dofs = len(self.__gripper)
+                # Override SDK's hardcoded gripper position limit if requested.
+                # hex_device SDK ships GR100 with [0, 0.57] which is conservative;
+                # real hardware can rotate further before mechanical stop.
+                # Set robot_config["gripper_max_position"] to bypass the SDK clamp.
+                gmax = robot_config.get("gripper_max_position")
+                if gmax is not None:
+                    try:
+                        self.__gripper._hands_limit[1] = float(gmax)
+                        print(f"\033[33m[hexarm] gripper limit override: upper={float(gmax)}\033[0m")
+                    except (AttributeError, IndexError) as e:
+                        print(f"\033[33m[hexarm] failed to override gripper limit: {e}\033[0m")
                 self._limits += [self.__gripper.get_joint_limits()]
             else:
                 print("\033[33mGripper not found\033[0m")
