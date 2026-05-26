@@ -13,6 +13,9 @@
     <mesh name="gripper_L1" file="gripper_L1.STL"/>
     <mesh name="gripper_L2" file="gripper_L2.STL"/>
 
+    <!-- Wrist camera visual mesh (copied from archer_l6y; D435i body) -->
+    <mesh name="camera_link" file="camera_link.STL"/>
+
     <!-- table -->
     <mesh name="table_link" file="table_link.STL" scale="0.001 0.001 0.001"/>
 
