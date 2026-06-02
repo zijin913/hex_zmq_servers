@@ -7,40 +7,18 @@
 ################################################################
 
 from .cam_base import HexCamBase, HexCamClientBase, HexCamServerBase
-from .dummy import HexCamDummy, HexCamDummyClient, HexCamDummyServer
-from .rgb import HexCamRGB, HexCamRGBClient, HexCamRGBServer
 
 __all__ = [
     # base
     "HexCamBase",
     "HexCamClientBase",
     "HexCamServerBase",
-
-    # dummy
-    "HexCamDummy",
-    "HexCamDummyClient",
-    "HexCamDummyServer",
-
-    # rgb
-    "HexCamRGB",
-    "HexCamRGBClient",
-    "HexCamRGBServer",
 ]
 
 # Check optional dependencies availability
 from importlib.util import find_spec
 
-_HAS_BERXEL = find_spec("berxel_py_wrapper") is not None
 _HAS_REALSENSE = find_spec("pyrealsense2") is not None
-
-# Optional: berxel
-if _HAS_BERXEL:
-    from .berxel import HexCamBerxel, HexCamBerxelClient, HexCamBerxelServer
-    __all__.extend([
-        "HexCamBerxel",
-        "HexCamBerxelClient",
-        "HexCamBerxelServer",
-    ])
 
 # Optional: realsense
 if _HAS_REALSENSE:
