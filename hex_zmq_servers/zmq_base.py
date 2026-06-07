@@ -6,139 +6,30 @@
 # Date  : 2025-09-12
 ################################################################
 
-import os, signal, json
-import time, ctypes, ctypes.util
+import os, signal, json, time
 import threading
 import zmq
 import numpy as np
 from abc import ABC, abstractmethod
 
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_now,
+)
+
+# Backward-compat aliases: upstream moved timing utils to hex_robo_utils and
+# renamed them. The fork's code still uses the old hex_zmq_ts_* / hex_ns_now
+# names, so re-export them here to avoid touching every call site.
+from hex_robo_utils import (
+    hex_ts_now as hex_zmq_ts_now,
+    hex_ts_delta_ms as hex_zmq_ts_delta_ms,
+    hex_ts_to_ns as hex_zmq_ts_to_ns,
+    ns_now as hex_ns_now,
+    ns_to_hex_ts as ns_to_hex_zmq_ts,
+)
+
 MAX_SEQ_NUM = int(1e12)
 MAX_DEQUE_LEN = 10
-
-################################################################
-# Time Related
-################################################################
-
-
-class SingletonMeta(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class HexTimeManager(metaclass=SingletonMeta):
-
-    class timespec(ctypes.Structure):
-        _fields_ = [("tv_sec", ctypes.c_long), ("tv_nsec", ctypes.c_long)]
-
-    def __init__(self):
-        self.__use_ptp = False
-        ptp_path = os.getenv("HEX_PTP_CLOCK", None)
-        if ptp_path is not None:
-            self.__fd = os.open(ptp_path, os.O_RDONLY | os.O_CLOEXEC)
-            self.__clock_id = ((~self.__fd) << 3) | 3
-            self.__libc = ctypes.CDLL(
-                ctypes.util.find_library("c"),
-                use_errno=True,
-            )
-            self.__use_ptp = True
-            print(f"Using PTP clock from {ptp_path}")
-        else:
-            print("Using system clock")
-
-    def __del__(self):
-        if self.__use_ptp:
-            os.close(self.__fd)
-
-    def get_now_ns(self) -> int:
-        if self.__use_ptp:
-            ts = self.timespec()
-            if self.__libc.clock_gettime(self.__clock_id,
-                                         ctypes.byref(ts)) != 0:
-                err = ctypes.get_errno()
-                raise OSError(err, os.strerror(err))
-            return ts.tv_sec * 1_000_000_000 + ts.tv_nsec
-        else:
-            return time.perf_counter_ns()
-
-
-_HEX_TIME_MANAGER = HexTimeManager()
-
-
-def hex_zmq_ts_to_ns(ts: dict) -> int:
-    return ts['s'] * 1_000_000_000 + ts['ns']
-
-
-def ns_to_hex_zmq_ts(ns: int) -> dict:
-    return {
-        "s": ns // 1_000_000_000,
-        "ns": ns % 1_000_000_000,
-    }
-
-
-def hex_ns_now() -> int:
-    return _HEX_TIME_MANAGER.get_now_ns()
-
-
-def hex_zmq_ts_now() -> dict:
-    return ns_to_hex_zmq_ts(hex_ns_now())
-
-
-def hex_zmq_ts_delta_ms(curr_ts, hdr_ts) -> float:
-    try:
-        return (curr_ts['s'] - hdr_ts['s']) * 1_000 + (
-            curr_ts['ns'] - hdr_ts['ns']) / 1_000_000
-
-    except Exception as e:
-        print(f"hex_zmq_ts_delta_ms failed: {e}")
-        return np.inf
-
-
-class HexRate:
-
-    def __init__(self, hz: float, spin_threshold_ns: int = 10_000):
-        if hz <= 0:
-            raise ValueError("hz must be greater than 0")
-        if spin_threshold_ns < 0:
-            raise ValueError("spin_threshold_ns must be non-negative")
-        self.__period_ns = int(1_000_000_000 / hz)
-        self.__next_ns = self.__now_ns() + self.__period_ns
-        self.__spin_threshold_ns = spin_threshold_ns
-
-    @staticmethod
-    def __now_ns() -> int:
-        return hex_ns_now()
-
-    def reset(self):
-        self.__next_ns = self.__now_ns() + self.__period_ns
-
-    def sleep(self):
-        target_ns = self.__next_ns
-        now_ns = self.__now_ns()
-        remain_ns = target_ns - now_ns
-        if remain_ns <= 0:
-            needed_period = (now_ns - target_ns) // self.__period_ns + 1
-            self.__next_ns += needed_period * self.__period_ns
-            return
-
-        spin_threshold = min(self.__spin_threshold_ns, self.__period_ns)
-        coarse_sleep_ns = remain_ns - spin_threshold
-        if coarse_sleep_ns > 0:
-            time.sleep(coarse_sleep_ns / 1_000_000_000.0)
-
-        while True:
-            now_ns = self.__now_ns()
-            if now_ns >= target_ns:
-                break
-            if target_ns - now_ns > 50_000:
-                time.sleep(0)
-
-        self.__next_ns += self.__period_ns
-
 
 ################################################################
 # ZMQ Related
@@ -239,7 +130,7 @@ class HexZMQClientBase(ABC):
             req_buf = np.ascontiguousarray(req_buf)
         send_hdr = {
             "cmd": req_dict["cmd"],
-            "ts": req_dict.get("ts", hex_zmq_ts_now()),
+            "ts": req_dict.get("ts", hex_ts_now()),
             "args": req_dict.get("args", None),
             "dtype": str(req_buf.dtype),
             "shape": tuple(req_buf.shape),
@@ -371,7 +262,7 @@ class HexZMQServerBase(ABC):
                     resp_buf = np.ascontiguousarray(resp_buf)
                 send_hdr = {
                     "cmd": resp_hdr["cmd"],
-                    "ts": resp_hdr.get("ts", hex_zmq_ts_now()),
+                    "ts": resp_hdr.get("ts", hex_ts_now()),
                     "args": resp_hdr.get("args", None),
                     "dtype": str(resp_buf.dtype),
                     "shape": tuple(resp_buf.shape),
@@ -392,7 +283,7 @@ class HexZMQServerBase(ABC):
                         "err": str(e)
                     },
                     "ts":
-                    hex_zmq_ts_now(),
+                    hex_ts_now(),
                     "dtype":
                     "uint8",
                     "shape": (0, ),
@@ -500,11 +391,16 @@ class HexZMQDummyClient(HexZMQClientBase):
         net_config: dict = NET_CONFIG,
     ):
         HexZMQClientBase.__init__(self, net_config)
+        self._wait_for_working()
 
     def single_test(self):
         resp_hdr, resp_buf = self.request({"cmd": "test"})
-        print(f"resp_hdr: {resp_hdr}")
-        print(f"resp_buf: {resp_buf}")
+        return resp_hdr, resp_buf
+
+    def _recv_loop(self):
+        rate = HexRate(500)
+        while self._recv_flag:
+            rate.sleep()
 
 
 class HexZMQDummyServer(HexZMQServerBase):
@@ -524,6 +420,8 @@ class HexZMQDummyServer(HexZMQServerBase):
             self.close()
 
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):
+        if recv_hdr["cmd"] == "is_working":
+            return self.no_ts_hdr(recv_hdr, True), None
         if recv_hdr["cmd"] == "test":
             print("test received")
             print(f"recv_hdr: {recv_hdr}")

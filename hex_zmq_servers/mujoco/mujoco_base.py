@@ -12,11 +12,8 @@ from collections import deque
 from abc import abstractmethod
 
 from ..device_base import HexDeviceBase
-from ..zmq_base import (
-    hex_zmq_ts_now,
-    HexZMQClientBase,
-    HexZMQServerBase,
-)
+from ..zmq_base import HexZMQClientBase, HexZMQServerBase
+from hex_robo_utils import hex_ts_now
 
 NET_CONFIG = {
     "ip": "127.0.0.1",
@@ -113,8 +110,8 @@ class HexMujocoClientBase(HexZMQClientBase):
             "obj": 0,
         }
         self._states_queue = {
-            "robot": deque(maxlen=self._max_seq_num),
-            "obj": deque(maxlen=self._max_seq_num),
+            "robot": deque(maxlen=self._deque_maxlen),
+            "obj": deque(maxlen=self._deque_maxlen),
         }
         self._camera_seq = {
             "rgb": 0,
@@ -289,7 +286,7 @@ class HexMujocoClientBase(HexZMQClientBase):
         hdr, _ = self.request(
             {
                 "cmd": req_cmd,
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._cmds_seq,
             },
             cmds,

@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "Hex ZMQ Servers: A ZeroMQ-Based Embodied AI Communication Framework"
+message: "If you use this software in academic research, please cite it."
+type: software
+
+authors:
+  - family-names: Dong
+    given-names: Zhaorui
+    affiliation: Hexfellow Robotics
+    email: dzr159@gmail.com
+  - family-names: Chen
+    given-names: Zejun
+    affiliation: Hexfellow Robotics
+    email: zejun.chen@hexfellow.com
+
+repository-code: https://github.com/hexfellow/hex_zmq_servers
+url: https://github.com/hexfellow/hex_zmq_servers
+doi: 10.5281/zenodo.18309960
+
+license: Apache-2.0
