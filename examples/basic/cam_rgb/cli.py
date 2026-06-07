@@ -8,12 +8,14 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexCamRGBClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -53,10 +55,10 @@ def main():
         while True:
             rgb_hdr, rgb_img = client.get_rgb()
             if rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
+                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
                 )
                 if rotate_type is not None:
                     rgb_img = cv2.rotate(rgb_img, rotate_type)

@@ -28,20 +28,53 @@ double_gello_sim/
     ls /dev/ttyUSB*
     ```
 
-2. Set device permission:
+2. Set device permission (Assuming the device ports are `/dev/ttyUSB0` and `/dev/ttyUSB1`):
 
     ```bash
     sudo chmod 666 /dev/ttyUSB0
     sudo chmod 666 /dev/ttyUSB1
     ```
 
-3. (**Important**) Modify the `LEFT_GELLO_DEVICE` and `RIGHT_GELLO_DEVICE` in `launch.py` to match your device port (e.g., `/dev/ttyUSB0` and `/dev/ttyUSB1`) before running the example.
+3. (Optional) Add user to dialout group (permanent solution):
+
+    ```bash
+    sudo usermod -aG dialout $USER
+    # Logout and login again
+    ```
 
 ## Usage
 
-- Assuming you have installed the library from source code, and your `working directory` is `hex_zmq_servers/examples/adv/double_gello_sim`, you can run the example by:
+1. **Important⚠️** Modify the device parameters in `launch.py`
+
+    Modify the `LEFT_GELLO_DEVICE` and `RIGHT_GELLO_DEVICE` in `launch.py` to match your device ports before running the example.
+
+    Assuming the device ports are `/dev/ttyUSB0` and `/dev/ttyUSB1`, you can modify the `launch.py` as follows:
+
+    ```python
+    ...
+    LEFT_GELLO_DEVICE = "/dev/ttyUSB0"
+    RIGHT_GELLO_DEVICE = "/dev/ttyUSB1"
+    ...
+    ```
+
+2. Activate the virtual environment
 
     ```bash
-    source ../../../.venv/bin/activate
-    python3 launch.py
+    cd path/to/hex_zmq_servers
+    source .venv/bin/activate
+    ```
+
+3. Run the launch script
+
+    Run the launch script:
+
+    ```bash
+    cd examples/adv/double_gello_sim
+    python launch.py
+    ```
+
+    The output should be like this:
+
+    ```bash
+    ...
     ```

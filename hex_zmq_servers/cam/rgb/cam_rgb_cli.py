@@ -7,7 +7,8 @@
 ################################################################
 
 from ..cam_base import HexCamClientBase
-from ...zmq_base import HexRate
+
+from hex_robo_utils import HexRate
 
 NET_CONFIG = {
     "ip": "127.0.0.1",
@@ -32,7 +33,7 @@ class HexCamRGBClient(HexCamClientBase):
     def get_intri(self):
         intri_hdr, intri = self.request({"cmd": "get_intri"})
         return intri_hdr, intri
-    
+
     def _recv_loop(self):
         rate = HexRate(200)
         while self._recv_flag:
@@ -40,4 +41,3 @@ class HexCamRGBClient(HexCamClientBase):
             if hdr is not None:
                 self._rgb_queue.append((hdr, img))
             rate.sleep()
-

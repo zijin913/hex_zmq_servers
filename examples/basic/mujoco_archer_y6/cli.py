@@ -8,12 +8,14 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexMujocoArcherY6Client,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -38,23 +40,30 @@ def main():
     client = HexMujocoArcherY6Client(net_config=net_config)
 
     # get dofs, limits and intri
-    dofs = client.get_dofs()
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
     limits = client.get_limits()
     _, intri = client.get_intri()
+    assert limits.shape[0] == dof_arr.sum(
+    ), "The number of limits must be equal to the number of dofs"
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
 
     # get states, rgb and depth, and set cmds
-    rate = HexRate(250)
+    rate = HexRate(2e3)
     try:
         while True:
             robot_states_hdr, robot_states = client.get_states("robot")
             if robot_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"robot_states_seq: {robot_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, robot_states_hdr['ts'])}ms"
+                    f"robot_states_seq: {robot_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, robot_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"],
                         f"robot_states pos: {robot_states[:, 0]}")
@@ -65,10 +74,10 @@ def main():
 
             obj_states_hdr, obj_states = client.get_states("obj")
             if obj_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
+                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"], f"obj_states: {obj_states}")
 
@@ -81,15 +90,15 @@ def main():
                 0.0,
                 0.5,
             ])
-            # hex_log(HEX_LOG_LEVEL["info"], f"cmds: {cmds}")
+            hex_log(HEX_LOG_LEVEL["info"], f"cmds: {cmds}")
             client.set_cmds(cmds)
 
             depth_hdr, depth_img = client.get_depth()
             if depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"depth_seq: {depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
+                    f"depth_seq: {depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
                 )
                 depth_values = depth_img.astype(np.float32)
                 depth_norm = np.clip((depth_values - 70) / (1000 - 70), 0.0,
@@ -100,10 +109,10 @@ def main():
 
             rgb_hdr, rgb_img = client.get_rgb()
             if rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
+                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("rgb_img", rgb_img)
 

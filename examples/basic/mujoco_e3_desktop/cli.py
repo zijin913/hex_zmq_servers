@@ -8,12 +8,14 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexMujocoE3DesktopClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -46,23 +48,33 @@ def main():
     client = HexMujocoE3DesktopClient(net_config=net_config)
 
     # get dofs, limits and intri
-    dofs = client.get_dofs()
+    dof_arr = client.get_dofs()
+    dofs = {
+        "left_arm": int(dof_arr[0]),
+        "left_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "right_arm": int(dof_arr[2]),
+        "right_gripper": int(dof_arr[3]) if len(dof_arr) > 3 else None,
+        "left_sum": int(dof_arr[0]) + int(dof_arr[1]),
+        "right_sum": int(dof_arr[2]) + int(dof_arr[3]),
+    }
     limits = client.get_limits()
     _, intri = client.get_intri()
+    assert limits.shape[0] == dof_arr.sum(
+    ), "The number of limits must be equal to the number of dofs"
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
     hex_log(HEX_LOG_LEVEL["info"], f"intri: {intri}")
 
     # get states, rgb and depth, and set cmds
-    rate = HexRate(250)
+    rate = HexRate(2e3)
     try:
         while True:
             left_states_hdr, left_states = client.get_states("left")
             if left_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"left_states_seq: {left_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, left_states_hdr['ts'])}ms"
+                    f"left_states_seq: {left_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, left_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"],
                         f"left_states pos: {left_states[:, 0]}")
@@ -73,10 +85,10 @@ def main():
 
             right_states_hdr, right_states = client.get_states("right")
             if right_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"right_states_seq: {right_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, right_states_hdr['ts'])}ms"
+                    f"right_states_seq: {right_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, right_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"],
                         f"right_states pos: {right_states[:, 0]}")
@@ -87,10 +99,10 @@ def main():
 
             obj_states_hdr, obj_states = client.get_states("obj")
             if obj_states_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
+                    f"obj_states_seq: {obj_states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, obj_states_hdr['ts'])}ms"
                 )
                 hex_log(HEX_LOG_LEVEL["info"], f"obj_states: {obj_states}")
 
@@ -119,52 +131,52 @@ def main():
 
             head_depth_hdr, head_depth_img = client.get_depth("head")
             if head_depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"head_depth_seq: {head_depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, head_depth_hdr['ts'])}ms"
+                    f"head_depth_seq: {head_depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, head_depth_hdr['ts'])}ms"
                 )
                 head_depth_cmap = depth_to_cmap(head_depth_img)
                 cv2.imshow("head_depth_cmap", head_depth_cmap)
 
             head_rgb_hdr, head_rgb_img = client.get_rgb("head")
             if head_rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"head_rgb_seq: {head_rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, head_rgb_hdr['ts'])}ms"
+                    f"head_rgb_seq: {head_rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, head_rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("head_rgb_img", head_rgb_img)
 
             left_depth_hdr, left_depth_img = client.get_depth("left")
             if left_depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"left_depth_seq: {left_depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, left_depth_hdr['ts'])}ms"
+                    f"left_depth_seq: {left_depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, left_depth_hdr['ts'])}ms"
                 )
                 left_depth_cmap = depth_to_cmap(left_depth_img)
                 cv2.imshow("left_depth_cmap", left_depth_cmap)
 
             left_rgb_hdr, left_rgb_img = client.get_rgb("left")
             if left_rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"left_rgb_seq: {left_rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, left_rgb_hdr['ts'])}ms"
+                    f"left_rgb_seq: {left_rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, left_rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("left_rgb_img", left_rgb_img)
 
             right_depth_hdr, right_depth_img = client.get_depth("right")
             if right_depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"right_depth_seq: {right_depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, right_depth_hdr['ts'])}ms"
+                    f"right_depth_seq: {right_depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, right_depth_hdr['ts'])}ms"
                 )
                 right_depth_cmap = depth_to_cmap(right_depth_img)
                 cv2.imshow("right_depth_cmap", right_depth_cmap)
 
             right_rgb_hdr, right_rgb_img = client.get_rgb("right")
             if right_rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 print(
-                    f"right_rgb_seq: {right_rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, right_rgb_hdr['ts'])}ms"
+                    f"right_rgb_seq: {right_rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, right_rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("right_rgb_img", right_rgb_img)
 

@@ -11,6 +11,7 @@ from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
 # device config
+FRAME_RATE = 20
 ## P100
 # cam 0
 CAM_0_PORT = 12345
@@ -36,7 +37,7 @@ CAM_1_EXPOSURE = 10000
 CAM_1_SENS_TS = True
 # cam 2
 CAM_2_PORT = 12347
-CAM_2_SERIAL_NUMBER = "P050HYX5421E2A004"
+CAM_2_SERIAL_NUMBER = "P050HYX5421E2A008"
 CAM_2_EXPOSURE = 10000
 CAM_2_SENS_TS = True
 
@@ -76,6 +77,7 @@ NODE_PARAMS_DICT = {
             "params": {
                 "serial_number": CAM_0_SERIAL_NUMBER,
                 "exposure": CAM_0_EXPOSURE,
+                "frame_rate": FRAME_RATE,
                 "sens_ts": CAM_0_SENS_TS,
             },
         },
@@ -91,6 +93,7 @@ NODE_PARAMS_DICT = {
             "params": {
                 "serial_number": CAM_1_SERIAL_NUMBER,
                 "exposure": CAM_1_EXPOSURE,
+                "frame_rate": FRAME_RATE,
                 "sens_ts": CAM_1_SENS_TS,
             },
         },
@@ -106,6 +109,7 @@ NODE_PARAMS_DICT = {
             "params": {
                 "serial_number": CAM_2_SERIAL_NUMBER,
                 "exposure": CAM_2_EXPOSURE,
+                "frame_rate": FRAME_RATE,
                 "sens_ts": CAM_2_SENS_TS,
             },
         },

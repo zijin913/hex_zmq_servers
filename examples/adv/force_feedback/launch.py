@@ -14,10 +14,6 @@ from hex_zmq_servers import HEXARM_URDF_PATH_DICT
 # robot model config
 ARM_TYPE = "archer_y6"
 GRIPPER_TYPE = "gp100"
-if GRIPPER_TYPE == "empty":
-    USE_GRIPPER = False
-else:
-    USE_GRIPPER = True
 
 # server ports
 MASTER_SRV_PORT = 12345
@@ -42,7 +38,6 @@ NODE_PARAMS_DICT = {
         "cfg": {
             "model_path": HEXARM_URDF_PATH_DICT[f"{ARM_TYPE}_{GRIPPER_TYPE}"],
             "last_link": "link_6",
-            "use_gripper": USE_GRIPPER,
             "hexarm_master_net_cfg": {
                 "realtime_mode": True,
                 "port": MASTER_SRV_PORT,
@@ -67,7 +62,6 @@ NODE_PARAMS_DICT = {
                 "device_port": MASTER_DEVICE_PORT,
                 "control_hz": 500,
                 "arm_type": ARM_TYPE,
-                "use_gripper": USE_GRIPPER,
                 "mit_kp": [0.0] * 7,
                 "mit_kd": [0.0] * 7,
                 "sens_ts": True,
@@ -88,7 +82,6 @@ NODE_PARAMS_DICT = {
                 "device_port": SLAVE_DEVICE_PORT,
                 "control_hz": 500,
                 "arm_type": ARM_TYPE,
-                "use_gripper": USE_GRIPPER,
                 "mit_kp": [200.0, 200.0, 200.0, 75.0, 15.0, 15.0, 20.0],
                 "mit_kd": [10.0, 10.0, 10.0, 6.0, 0.31, 0.31, 1.0],
                 "sens_ts": True,

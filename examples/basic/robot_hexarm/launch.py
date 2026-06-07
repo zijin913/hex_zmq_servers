@@ -11,12 +11,8 @@ from hex_zmq_servers import HexLaunch, HexNodeConfig
 from hex_zmq_servers import HEX_ZMQ_SERVERS_PATH_DICT, HEX_ZMQ_CONFIGS_PATH_DICT
 
 # robot model config
-ARM_TYPE = "archer_y6"
-GRIPPER_TYPE = "gp100_handle"
-if GRIPPER_TYPE == "empty":
-    USE_GRIPPER = False
-else:
-    USE_GRIPPER = True
+ARM_TYPE = "firefly_y6"
+GRIPPER_TYPE = "empty"
 
 # device config
 DEVICE_IP = "10.42.0.101"
@@ -55,7 +51,6 @@ NODE_PARAMS_DICT = {
                 "device_port": HEXARM_DEVICE_PORT,
                 "control_hz": 500,
                 "arm_type": ARM_TYPE,
-                "use_gripper": USE_GRIPPER,
                 "sens_ts": True,
             },
         },

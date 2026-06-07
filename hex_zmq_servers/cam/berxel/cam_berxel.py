@@ -12,9 +12,13 @@ import numpy as np
 from collections import deque
 
 from ..cam_base import HexCamBase
-from ...zmq_base import hex_ns_now, hex_zmq_ts_now
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 from berxel_py_wrapper import *
+
+from hex_robo_utils import (
+    ns_now,
+    hex_ts_now,
+)
 
 CAMERA_CONFIG = {
     "serial_number": 'P100RYB4C03M2B322',
@@ -47,8 +51,8 @@ class HexCamBerxel(HexCamBase):
 
         # variables
         # berxel variables
-        self.__context = None
-        self.__device = None
+        self.__context: BerxelHawkContext | None = None
+        self.__device: BerxelHawkDevice | None = None
         # camera variables
         self.__intri = np.zeros(4)
 
@@ -92,7 +96,7 @@ class HexCamBerxel(HexCamBase):
 
         rgb_count = 0
         depth_count = 0
-        bias_ns = hex_ns_now() - time.time_ns()
+        bias_ns = ns_now() - time.time_ns()
         while self._working.is_set() and not stop_event.is_set():
             # read frame
             hawk_rgb_frame = self.__device.readColorFrame(40)
@@ -159,7 +163,7 @@ class HexCamBerxel(HexCamBase):
             )
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-        return ts if self.__sens_ts else hex_zmq_ts_now(), frame
+        return ts if self.__sens_ts else hex_ts_now(), frame
 
     def __open_device(self, serial_number: str | None = None) -> bool:
         # init context
@@ -214,7 +218,15 @@ class HexCamBerxel(HexCamBase):
         return True
 
     def __start_stream(self):
-        self.__device.setColorExposureGain(self.__exposure, self.__gain)
+        if self.__serial_number.startswith('P008'):
+            self.__device.setSonixAEStatus(False)
+            self.__device.setSonixExposureTime(int(self.__exposure // 100))
+        else:
+            self.__device.setColorExposureGain(self.__exposure, self.__gain)
+        self.__device.setDepthElectricCurrent(700)
+        self.__device.setDepthAE(False)
+        self.__device.setDepthExposure(43)
+        self.__device.setDepthGain(1)
         self.__device.setRegistrationEnable(True)
         self.__device.setFrameSync(True)
         while self.__device.setSystemClock() != 0:

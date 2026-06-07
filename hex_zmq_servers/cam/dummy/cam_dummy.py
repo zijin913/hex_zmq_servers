@@ -11,11 +11,12 @@ import numpy as np
 from collections import deque
 
 from ..cam_base import HexCamBase
-from ...zmq_base import (
-    hex_zmq_ts_now,
-    HexRate,
-)
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
+
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_now,
+)
 
 
 class HexCamDummy(HexCamBase):
@@ -43,7 +44,7 @@ class HexCamDummy(HexCamBase):
                 (480, 640, 3),
                 dtype=np.uint8,
             )
-            rgb_queue.append((hex_zmq_ts_now(), rgb_count, rgb_img))
+            rgb_queue.append((hex_ts_now(), rgb_count, rgb_img))
             rgb_count = (rgb_count + 1) % self._max_seq_num
 
             # depth
@@ -53,7 +54,7 @@ class HexCamDummy(HexCamBase):
                 (480, 640),
                 dtype=np.uint16,
             )
-            depth_queue.append((hex_zmq_ts_now(), depth_count, depth_img))
+            depth_queue.append((hex_ts_now(), depth_count, depth_img))
             depth_count = (depth_count + 1) % self._max_seq_num
 
             # sleep

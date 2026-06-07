@@ -9,13 +9,15 @@
 import argparse, json, time
 import numpy as np
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotGelloClient,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexRate,
+)
 
 
 def wait_client_working(client, timeout: float = 5.0) -> bool:
@@ -38,7 +40,6 @@ def main():
     try:
         model_path = cfg["model_path"]
         last_link = cfg["last_link"]
-        use_gripper = cfg["use_gripper"]
         gello_net_cfg = cfg["gello_net_cfg"]
         hexarm_net_cfg = cfg["hexarm_net_cfg"]
     except KeyError as ke:
@@ -57,6 +58,14 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "hexarm server is not working")
         return
 
+    dof_arr = hexarm_client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
     # work loop
     rate = HexRate(500)
     gello_cmds = None
@@ -64,25 +73,23 @@ def main():
         # gello
         gello_states_hdr, gello_states = gello_client.get_states()
         if gello_states_hdr is not None:
-            gello_cmds = gello_states if use_gripper else gello_states[:-1]
+            gello_cmds = gello_states[:dofs["sum"]].copy()
 
         # hexarm
         hexarm_states_hdr, hexarm_states = hexarm_client.get_states()
         if hexarm_states_hdr is not None:
-            arm_q = hexarm_states[:,
-                                  0][:-1] if use_gripper else hexarm_states[:,
-                                                                            0]
-            arm_dq = hexarm_states[:,
-                                   1][:-1] if use_gripper else hexarm_states[:,
-                                                                             1]
+            arm_q = hexarm_states[:dofs["robot_arm"], 0]
+            arm_dq = hexarm_states[:dofs["robot_arm"], 1]
+
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-            tau_comp = c_mat @ arm_dq + g_vec
-            if use_gripper:
-                tau_comp = np.concatenate((tau_comp, np.zeros(1)), axis=0)
+            tau_comp = np.zeros(dofs["sum"])
+            tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
+
             if gello_cmds is not None:
                 cmds = np.concatenate(
                     (gello_cmds.reshape(-1, 1), tau_comp.reshape(-1, 1)),
-                    axis=1)
+                    axis=1,
+                )
                 hexarm_client.set_cmds(cmds)
 
         rate.sleep()

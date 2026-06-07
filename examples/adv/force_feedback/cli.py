@@ -9,12 +9,14 @@
 import argparse, json, time
 import numpy as np
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHexarmClient,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexRate,
+)
 
 
 def wait_client_working(client, timeout: float = 5.0) -> bool:
@@ -45,7 +47,6 @@ def main():
     try:
         model_path = cfg["model_path"]
         last_link = cfg["last_link"]
-        use_gripper = cfg["use_gripper"]
         hexarm_master_net_cfg = cfg["hexarm_master_net_cfg"]
         hexarm_slave_net_cfg = cfg["hexarm_slave_net_cfg"]
     except KeyError as ke:
@@ -58,9 +59,6 @@ def main():
     dyn_util = DynUtil(model_path, last_link)
     comp_weight = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     comp_deadzone = np.array([7.0, 7.0, 7.0, 3.0, 2.0, 2.0, 2.0])
-    if not use_gripper:
-        comp_weight = comp_weight[:-1]
-        comp_deadzone = comp_deadzone[:-1]
 
     # wait servers to work
     if not wait_client_working(hexarm_master_client):
@@ -70,12 +68,24 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "hexarm slave server is not working")
         return
 
+    dof_arr = hexarm_master_client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
+    if dofs["robot_gripper"] is not None:
+        comp_weight = comp_weight[:dofs["robot_arm"]]
+        comp_deadzone = comp_deadzone[:dofs["robot_arm"]]
+
     # work loop
     rate = HexRate(2e3)
     res_comp = False
     master_q = None
-    slave_res_q = np.zeros(len(comp_weight))
-    slave_res_eff = np.zeros(len(comp_weight))
+    slave_res_q = np.zeros(dofs["robot_arm"])
+    slave_res_eff = np.zeros(dofs["robot_arm"])
     while True:
         # master
         master_states_hdr, master_states = hexarm_master_client.get_states()
@@ -85,14 +95,13 @@ def main():
             master_dq = master_states[:, 1]
 
             # calculate tau_comp
-            master_arm_q = master_q[:-1] if use_gripper else master_q
-            master_arm_dq = master_dq[:-1] if use_gripper else master_dq
+            master_arm_q = master_q[:dofs["robot_arm"]]
+            master_arm_dq = master_dq[:dofs["robot_arm"]]
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(
                 master_arm_q, master_arm_dq)
-            master_tau_comp = c_mat @ master_arm_dq + g_vec
-            if use_gripper:
-                master_tau_comp = np.concatenate(
-                    (master_tau_comp, np.zeros(1)), axis=0)
+            master_tau_comp = np.zeros(dofs["sum"])
+            master_tau_comp[:dofs["robot_arm"]] = c_mat @ master_arm_dq + g_vec
+
             if res_comp:
                 master_tau_comp -= deadzone(
                     slave_res_eff,
@@ -115,15 +124,16 @@ def main():
             slave_eff = slave_states[:, 2]
 
             # calculate slave res vars
-            slave_arm_q = slave_q[:-1] if use_gripper else slave_q
-            slave_arm_dq = slave_dq[:-1] if use_gripper else slave_dq
+            slave_arm_q = slave_q[:dofs["robot_arm"]]
+            slave_arm_dq = slave_dq[:dofs["robot_arm"]]
             _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(
                 slave_arm_q, slave_arm_dq)
-            slave_tau_comp = c_mat @ slave_arm_dq + g_vec
-            if use_gripper:
-                slave_tau_comp = np.concatenate((slave_tau_comp, np.zeros(1)),
-                                                axis=0)
+            slave_tau_comp = np.zeros(dofs["sum"])
+            slave_tau_comp[:dofs["robot_arm"]] = c_mat @ slave_arm_dq + g_vec
+
             slave_res_eff = slave_eff.copy()
+            slave_res_eff[:dofs["robot_arm"]] -= slave_tau_comp[
+                :dofs["robot_arm"]]
             slave_res_eff -= slave_tau_comp
 
             if master_q is not None:

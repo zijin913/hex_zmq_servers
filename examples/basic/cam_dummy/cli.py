@@ -8,12 +8,14 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexCamDummyClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import cv2
@@ -40,19 +42,19 @@ def main():
         while True:
             rgb_hdr, rgb_img = client.get_rgb()
             if rgb_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
+                    f"rgb_seq: {rgb_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, rgb_hdr['ts'])}ms"
                 )
                 cv2.imshow("rgb_img", rgb_img)
 
             depth_hdr, depth_img = client.get_depth()
             if depth_hdr is not None:
-                curr_ts = hex_zmq_ts_now()
+                curr_ts = hex_ts_now()
                 hex_log(
                     HEX_LOG_LEVEL["info"],
-                    f"depth_seq: {depth_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
+                    f"depth_seq: {depth_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, depth_hdr['ts'])}ms"
                 )
                 cv2.imshow("depth_img", depth_img)
 

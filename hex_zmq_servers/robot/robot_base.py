@@ -12,11 +12,11 @@ from collections import deque
 from abc import abstractmethod
 
 from ..device_base import HexDeviceBase
-from ..zmq_base import (
-    hex_zmq_ts_now,
+from ..zmq_base import HexZMQClientBase, HexZMQServerBase
+
+from hex_robo_utils import (
     HexRate,
-    HexZMQClientBase,
-    HexZMQServerBase,
+    hex_ts_now,
 )
 
 NET_CONFIG = {
@@ -161,7 +161,7 @@ class HexRobotClientBase(HexZMQClientBase):
         hdr, _ = self.request(
             {
                 "cmd": "set_cmds",
-                "ts": hex_zmq_ts_now(),
+                "ts": hex_ts_now(),
                 "args": self._cmds_seq,
             },
             cmds,

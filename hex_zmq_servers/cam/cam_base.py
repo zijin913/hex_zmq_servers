@@ -12,7 +12,9 @@ from collections import deque
 from abc import abstractmethod
 
 from ..device_base import HexDeviceBase
-from ..zmq_base import HexZMQClientBase, HexZMQServerBase, HexRate
+from ..zmq_base import HexZMQClientBase, HexZMQServerBase
+
+from hex_robo_utils import HexRate
 
 NET_CONFIG = {
     "ip": "127.0.0.1",

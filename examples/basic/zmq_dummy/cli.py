@@ -6,11 +6,24 @@
 # Date  : 2025-09-25
 ################################################################
 
-import argparse, json
+import argparse, json, time
 from hex_zmq_servers import (
-    HexRate,
+    HEX_LOG_LEVEL,
+    hex_log,
     HexZMQDummyClient,
 )
+from hex_robo_utils import HexRate
+
+
+def wait_client_working(client, timeout: float = 5.0) -> bool:
+    for _ in range(int(timeout * 10)):
+        if client.is_working():
+            if hasattr(client, "seq_clear"):
+                client.seq_clear()
+            return True
+        else:
+            time.sleep(0.1)
+    return False
 
 
 def main():
@@ -28,8 +41,13 @@ def main():
 
     client = HexZMQDummyClient(net_config=net_config)
 
-    rate = HexRate(1_000)
-    for _ in range(2_000):
+    # wait servers to work
+    if not wait_client_working(client):
+        hex_log(HEX_LOG_LEVEL["err"], "zmq dummy server is not working")
+        return
+
+    rate = HexRate(10)
+    while True:
         client.single_test()
         rate.sleep()
 

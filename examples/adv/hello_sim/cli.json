@@ -1,0 +1,36 @@
+{
+    "model_path": "path/to/model.urdf",
+    "last_link": "link_6",
+    "ctrl_cfg": {
+        "mit_kp": [
+            400.0,
+            400.0,
+            500.0,
+            200.0,
+            100.0,
+            100.0
+        ],
+        "mit_kd": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            2.0,
+            2.0
+        ]
+    },
+    "hello_net_cfg": {
+        "ip": "127.0.0.1",
+        "port": 12345,
+        "realtime_mode": false,
+        "deque_maxlen": 10,
+        "client_timeout_ms": 200
+    },
+    "mujoco_net_cfg": {
+        "ip": "127.0.0.1",
+        "port": 12346,
+        "realtime_mode": false,
+        "deque_maxlen": 10,
+        "client_timeout_ms": 200
+    }
+}

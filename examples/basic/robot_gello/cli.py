@@ -8,12 +8,14 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotGelloClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 
@@ -43,10 +45,10 @@ def main():
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
-            curr_ts = hex_zmq_ts_now()
+            curr_ts = hex_ts_now()
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"states_ts: {states_hdr['ts']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
+                f"states_ts: {states_hdr['ts']}; delay: {hex_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
             hex_log(HEX_LOG_LEVEL["info"], f"states: {states}")
 

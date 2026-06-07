@@ -12,14 +12,18 @@ import numpy as np
 import pygame
 import pygame.locals as pygconst
 from hex_zmq_servers import (
-    HexRate,
     HEX_LOG_LEVEL,
     hex_log,
     HexMujocoArcherY6Client,
 )
-from hex_robo_utils import HexDynUtil as DynUtil
-from hex_robo_utils import quat_mul
-from hex_robo_utils import part2trans, trans2part, trans_inv
+from hex_robo_utils import (
+    HexDynUtil as DynUtil,
+    HexRate,
+    part2trans,
+    quat_mul,
+    trans2part,
+    trans_inv,
+)
 
 JOY_BUTTON_MAP = {
     "L1": 4,
@@ -163,21 +167,21 @@ def interp_joint(cur_q, tar_joint, err_limit=0.05):
         return cur_q + err_norm * err_limit, True
 
 
-def interp_arm(cur_q, tar_joint, grip_flag, use_gripper=True, err_limit=0.05):
-    mid_joint = np.zeros(7 if use_gripper else 6)
-    if use_gripper:
-        mid_joint[:-1], interp_flag = interp_joint(cur_q[:-1],
-                                                   tar_joint,
-                                                   err_limit=err_limit)
-        mid_joint[-1], _ = interp_joint(
-            cur_q[-1],
+def interp_arm(cur_q,
+               tar_joint,
+               grip_flag=True,
+               dofs: dict = None,
+               err_limit=0.05):
+    mid_joint = np.zeros(dofs["sum"])
+    mid_joint[:dofs["robot_arm"]], interp_flag = interp_joint(
+        cur_q[:dofs["robot_arm"]],
+        tar_joint,
+        err_limit=err_limit,
+    )
+    if dofs["robot_gripper"] is not None:
+        mid_joint[-dofs["robot_gripper"]:], _ = interp_joint(
+            cur_q[-dofs["robot_gripper"]:],
             1.33 if grip_flag else 0.2,
-            err_limit=err_limit,
-        )
-    else:
-        mid_joint, interp_flag = interp_joint(
-            cur_q,
-            tar_joint[:-1],
             err_limit=err_limit,
         )
     return mid_joint, interp_flag
@@ -222,13 +226,21 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "mujoco server is not working")
         return
 
+    dof_arr = mujoco_client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
+    hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
+
     # work loop
     hz = 500.0
     period_s = 1.0 / hz
     rate = HexRate(hz)
     err_limit = 0.1
     cur_q = None
-    tau_comp = np.zeros(7)
+    tau_comp = np.zeros(dofs["sum"])
     tar_joint = INIT_JOINT.copy()
     tar_pos, tar_quat = dyn_util.forward_kinematics(tar_joint)[-1]
     tar_vel = np.zeros(3)
@@ -246,11 +258,12 @@ def main():
             if robot_states_hdr is not None:
                 cur_q = robot_states[:, 0]
                 cur_dq = robot_states[:, 1]
-                arm_q = cur_q[:-1]
-                arm_dq = cur_dq[:-1]
+                arm_q = cur_q[:dofs["robot_arm"]]
+                arm_dq = cur_dq[:dofs["robot_arm"]]
+
                 _, c_mat, g_vec, _, _ = dyn_util.dynamic_params(arm_q, arm_dq)
-                tau_comp = c_mat @ arm_dq + g_vec
-                tau_comp = np.concatenate((tau_comp, np.zeros(1)), axis=0)
+                tau_comp = np.zeros(dofs["sum"])
+                tau_comp[:dofs["robot_arm"]] = c_mat @ arm_dq + g_vec
 
             if cur_q is not None:
                 # update target pose
@@ -284,7 +297,7 @@ def main():
                         cur_q,
                         tar_joint,
                         grip_flag,
-                        use_gripper=True,
+                        dofs=dofs,
                         err_limit=err_limit,
                     )
                     # arrive target joint
@@ -292,18 +305,18 @@ def main():
                         tar_joint = None
                 else:
                     ik_success, ik_q, _ = dyn_util.inverse_kinematics(
-                        (tar_pos, tar_quat), cur_q[:-1])
+                        (tar_pos, tar_quat), cur_q[:dofs["robot_arm"]])
                     if ik_success:
                         mid_joint, interp_flag = interp_arm(
                             cur_q,
                             ik_q,
                             grip_flag,
-                            use_gripper=True,
+                            dofs=dofs,
                             err_limit=err_limit,
                         )
                     else:
                         tar_pos, tar_quat = dyn_util.forward_kinematics(
-                            cur_q[:-1])[-1]
+                            cur_q[:dofs["robot_arm"]])[-1]
 
                 # set cmds
                 cmds = np.concatenate(

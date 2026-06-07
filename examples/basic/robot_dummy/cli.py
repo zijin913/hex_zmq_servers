@@ -8,12 +8,13 @@
 
 import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotDummyClient,
+)
+from hex_robo_utils import (
+    HexRate,
+    hex_ts_now,
 )
 
 import numpy as np
@@ -42,18 +43,18 @@ def main():
     hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
 
     # get states and set cmds
-    rate = HexRate(1000)
+    rate = HexRate(500)
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
-            curr_ts = hex_zmq_ts_now()
-            hex_log(
-                HEX_LOG_LEVEL["info"],
-                f"states_seq: {states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
-            )
+            curr_ts = hex_ts_now()
+            # hex_log(
+            #     HEX_LOG_LEVEL["info"],
+            #     f"states_seq: {states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
+            # )
             hex_log(HEX_LOG_LEVEL["info"], f"states pos: {states[:, 0]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {states[:, 1]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states eff: {states[:, 2]}")
+            # hex_log(HEX_LOG_LEVEL["info"], f"states vel: {states[:, 1]}")
+            # hex_log(HEX_LOG_LEVEL["info"], f"states eff: {states[:, 2]}")
 
         cmds = np.random.uniform(limits[:, :, 0], limits[:, :, 1], (dofs, 3))
         client.set_cmds(cmds)
