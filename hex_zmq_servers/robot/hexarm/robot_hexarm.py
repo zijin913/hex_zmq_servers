@@ -71,6 +71,17 @@ class HexRobotHexarm(HexRobotBase):
             [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
         )
 
+        # Idle-hold keep-alive (opt-in). When the client command stream has a
+        # gap (teleop clutch released, pause, jitter, or no client at all),
+        # re-send the last command / hold the measured pose so the firmware's
+        # API watchdog keeps getting commands. Without this the arm parks with
+        # PscApiCommunicationTimeout, the SDK churns reconnects, and the native
+        # hex_device layer can segfault and kill the server. Default off so
+        # behavior is unchanged unless a config opts in.
+        self.__idle_hold = bool(robot_config.get("idle_hold", False))
+        self.__idle_hold_period_ms = 1000.0 / float(
+            robot_config.get("idle_hold_hz", 200.0))
+
         # variables
         # hex_arm variables
         self.__hex_api: HexDeviceApi | None = None
@@ -158,11 +169,15 @@ class HexRobotHexarm(HexRobotBase):
         last_states_ts = hex_ts_now()
         states_count = 0
         last_cmds_seq = -1
+        last_cmds = None       # most recent client command (idle-hold source)
+        hold_pos = None        # latest measured pose (idle-hold fallback)
+        last_send_ts = hex_ts_now()
         rate = HexRate(2000)
         while self._working.is_set() and not stop_event.is_set():
             # states
             ts, states = self.__get_states()
             if states is not None:
+                hold_pos = states[:, 0]
                 if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
@@ -175,12 +190,28 @@ class HexRobotHexarm(HexRobotBase):
                     -1] if self._realtime_mode else cmds_queue.popleft()
             except IndexError:
                 pass
+            sent = False
             if cmds_pack is not None:
                 ts, seq, cmds = cmds_pack
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
+                    last_cmds = cmds
                     # 命令时间戳新鲜度校验已移除:始终下发(see fork history)
                     self.__set_cmds(cmds)
+                    last_send_ts = hex_ts_now()
+                    sent = True
+
+            # idle-hold keep-alive — feed the firmware's API watchdog when the
+            # client command stream has a gap, so the arm holds position instead
+            # of parking (PscApiCommunicationTimeout) and churning the SDK into a
+            # native crash. Throttled to idle_hold_hz; re-sends the last command
+            # if there was one, else holds the measured pose.
+            if self.__idle_hold and not sent and hex_ts_delta_ms(
+                    hex_ts_now(), last_send_ts) >= self.__idle_hold_period_ms:
+                hold = last_cmds if last_cmds is not None else hold_pos
+                if hold is not None:
+                    self.__set_cmds(hold)
+                    last_send_ts = hex_ts_now()
 
             # sleep
             rate.sleep()
