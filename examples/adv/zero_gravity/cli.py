@@ -67,10 +67,19 @@ def main():
         hex_log(HEX_LOG_LEVEL["err"], "hexarm server is not working")
         return
 
-    print(f"[zerog] kp_scale={kp_scale}, kd_scale={kd_scale}")
+    # Control rate is configurable. 500Hz gives the smoothest comp but is
+    # the heaviest on the host (dynamics solve every cycle, ×2 arms). The
+    # arm backend's safety watchdog only needs a command every ~300ms, so
+    # anything ≥100Hz is safe; drop to ~200Hz if the host can't sustain
+    # 500Hz and is tripping PscApiCommunicationTimeout parking stops.
+    control_hz = float(cfg.get("control_hz", 500))
+
+    print(f"[zerog] kp_scale={kp_scale}, kd_scale={kd_scale}, "
+          f"control_hz={control_hz}")
 
     # work loop
-    rate = HexRate(500)
+    rate = HexRate(control_hz)
+    last_cmds = None  # most recent command, re-sent on a state read miss
     while True:
         # hexarm
         hexarm_states_hdr, hexarm_states = hexarm_client.get_states()
@@ -97,7 +106,15 @@ def main():
                 kp,
                 kd,
             ])
+            last_cmds = cmds
             hexarm_client.set_cmds(cmds)
+        elif last_cmds is not None:
+            # State read missed (ZMQ recv timeout). Keep feeding the arm
+            # backend its last command so a single slow cycle doesn't open
+            # a >300ms command gap and trip the watchdog → parking stop →
+            # reconnect thrash. pos is held at the last pose, so the arm
+            # stays soft-anchored rather than going limp.
+            hexarm_client.set_cmds(last_cmds)
 
         rate.sleep()
 

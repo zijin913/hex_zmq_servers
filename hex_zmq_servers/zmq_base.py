@@ -70,6 +70,12 @@ class HexZMQClientBase(ABC):
         self._timeout_ms = client_timeout_ms
         self._socket = None
         self._lock = threading.Lock()
+        # Stays False until the first successful exchange. Send/recv failures
+        # are only logged once the link has worked at least once, so the
+        # startup handover window (server up but arm not yet controllable)
+        # doesn't spam "recreate socket" — while a drop after the link has
+        # been live (e.g. a parking-stop reconnect) still warns.
+        self._has_worked = False
         self.__make_socket()
 
         # receive thread
@@ -103,14 +109,18 @@ class HexZMQClientBase(ABC):
             try:
                 self.__send_req(req_dict, req_buf)
             except zmq.Again:
-                print("client send failed; recreate socket")
+                if self._has_worked:
+                    print("client send failed; recreate socket")
                 self.__make_socket()
                 return None, None
 
             resp_hdr, resp_buf = self.__recv_resp()
             if resp_hdr is None:
-                print("client recv failed; recreate socket")
+                if self._has_worked:
+                    print("client recv failed; recreate socket")
                 self.__make_socket()
+            else:
+                self._has_worked = True
             return resp_hdr, resp_buf
 
     def is_working(self) -> bool:
@@ -143,7 +153,8 @@ class HexZMQClientBase(ABC):
                 copy=(req_buf.nbytes < 65536),
             )
         except zmq.Again:
-            print("client send failed")
+            if self._has_worked:
+                print("client send failed")
             raise
 
     def __recv_resp(self):
