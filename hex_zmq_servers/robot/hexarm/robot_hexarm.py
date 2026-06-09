@@ -170,7 +170,8 @@ class HexRobotHexarm(HexRobotBase):
         states_count = 0
         last_cmds_seq = -1
         last_cmds = None       # most recent client command (idle-hold source)
-        hold_pos = None        # latest measured pose (idle-hold fallback)
+        hold_pos = None        # latest measured pose (live)
+        idle_target = None     # latched pose held while idle (fixed, not chased)
         last_send_ts = hex_ts_now()
         rate = HexRate(2000)
         while self._working.is_set() and not stop_event.is_set():
@@ -196,6 +197,7 @@ class HexRobotHexarm(HexRobotBase):
                 if seq != last_cmds_seq:
                     last_cmds_seq = seq
                     last_cmds = cmds
+                    idle_target = None   # active stream: re-latch fresh on next idle
                     # 命令时间戳新鲜度校验已移除:始终下发(see fork history)
                     self.__set_cmds(cmds)
                     last_send_ts = hex_ts_now()
@@ -204,11 +206,22 @@ class HexRobotHexarm(HexRobotBase):
             # idle-hold keep-alive — feed the firmware's API watchdog when the
             # client command stream has a gap, so the arm holds position instead
             # of parking (PscApiCommunicationTimeout) and churning the SDK into a
-            # native crash. Throttled to idle_hold_hz; re-sends the last command
-            # if there was one, else holds the measured pose.
+            # native crash. Throttled to idle_hold_hz. Re-send the last real
+            # command if there was one; otherwise hold a *latched* pose captured
+            # once when the arm went idle. NOTE: never feed the live measured
+            # pose here — __set_cmds issues an MIT/impedance command with no
+            # gravity feedforward, so target==measured every tick means ~zero
+            # restoring torque and the arm droops under gravity, chasing its own
+            # sag downward. A fixed target builds real kp*(target-measured)
+            # torque and holds.
             if self.__idle_hold and not sent and hex_ts_delta_ms(
                     hex_ts_now(), last_send_ts) >= self.__idle_hold_period_ms:
-                hold = last_cmds if last_cmds is not None else hold_pos
+                if last_cmds is not None:
+                    hold = last_cmds
+                else:
+                    if idle_target is None and hold_pos is not None:
+                        idle_target = hold_pos.copy()   # latch once
+                    hold = idle_target
                 if hold is not None:
                     self.__set_cmds(hold)
                     last_send_ts = hex_ts_now()
