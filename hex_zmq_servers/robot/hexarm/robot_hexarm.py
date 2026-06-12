@@ -6,6 +6,7 @@
 # Date  : 2025-09-14
 ################################################################
 
+import os
 import time
 import threading
 import numpy as np
@@ -81,6 +82,41 @@ class HexRobotHexarm(HexRobotBase):
         self.__idle_hold = bool(robot_config.get("idle_hold", False))
         self.__idle_hold_period_ms = 1000.0 / float(
             robot_config.get("idle_hold_hz", 200.0))
+
+        # work_loop spin rate. Default 2000Hz oversamples 4x — arm state only
+        # updates at the report rate (~control_hz). That wasted spinning is a
+        # pure-Python GIL hog that starves the SDK's websocket-read thread in
+        # the same process, so the controller can't push frames (ENOBUFS) and
+        # the arm parks. Matching control_hz frees the GIL for the read thread.
+        self.__work_loop_hz = float(
+            robot_config.get("work_loop_hz", 2000.0))
+
+        # Gravity feedforward (opt-in). MIT commands here carry zero torque
+        # feedforward, so position-only commands settle below target by g/kp and
+        # a hold (target≈measured) droops. When enabled, add tau_g(q) computed
+        # from the firefly_y6 + gr100 URDF (pinocchio) to the arm torque so the
+        # arm holds its commanded pose. Benefits every client (teleop included).
+        # gravity_comp_scale<1 leaves a controlled residual sag. Default off so
+        # behavior is unchanged unless a config opts in.
+        self.__gravity_comp = bool(robot_config.get("gravity_comp", False))
+        self.__grav_scale = float(robot_config.get("gravity_comp_scale", 1.0))
+        self.__pin = None
+        self.__grav_model = None
+        self.__grav_data = None
+        if self.__gravity_comp:
+            try:
+                import pinocchio as pin
+                urdf = os.path.join(os.path.dirname(__file__),
+                                    "urdf", "firefly_y6", "gr100.urdf")
+                self.__pin = pin
+                self.__grav_model = pin.buildModelFromUrdf(urdf)
+                self.__grav_data = self.__grav_model.createData()
+                self.__grav_model.gravity.linear = np.array([0.0, 0.0, -9.81])
+                hex_log(HEX_LOG_LEVEL["info"],
+                        f"[hexarm] gravity comp ON (scale={self.__grav_scale})")
+            except Exception as e:
+                print(f"\033[91m[hexarm] gravity comp init failed: {e}\033[0m")
+                self.__gravity_comp = False
 
         # variables
         # hex_arm variables
@@ -173,7 +209,7 @@ class HexRobotHexarm(HexRobotBase):
         hold_pos = None        # latest measured pose (live)
         idle_target = None     # latched pose held while idle (fixed, not chased)
         last_send_ts = hex_ts_now()
-        rate = HexRate(2000)
+        rate = HexRate(self.__work_loop_hz)
         while self._working.is_set() and not stop_event.is_set():
             # states
             ts, states = self.__get_states()
@@ -327,10 +363,19 @@ class HexRobotHexarm(HexRobotBase):
             self._limits[self.__motor_idx["robot_arm"], 0, 0],
             self._limits[self.__motor_idx["robot_arm"], 0, 1],
         )
+        arm_tor = cmd_tor[self.__motor_idx["robot_arm"]]
+        if self.__gravity_comp:
+            try:
+                tau_g = self.__pin.computeGeneralizedGravity(
+                    self.__grav_model, self.__grav_data,
+                    np.asarray(arm_tar_pos, dtype=np.float64))
+                arm_tor = arm_tor + self.__grav_scale * tau_g
+            except Exception as e:
+                print(f"\033[91m[hexarm] gravity comp failed: {e}\033[0m")
         arm_cmd = self.__arm.construct_mit_command(
             arm_tar_pos,
             tar_vel[self.__motor_idx["robot_arm"]],
-            cmd_tor[self.__motor_idx["robot_arm"]],
+            arm_tor,
             cmd_kp[self.__motor_idx["robot_arm"]],
             cmd_kd[self.__motor_idx["robot_arm"]],
         )
