@@ -220,9 +220,8 @@
         </collision>
     </link>
     <joint name="gripper_base_joint" type="fixed">
-        <!-- GR100 claws lie along its own +Z (J1 origin Z=0.077). Identity rpy
-             aligns gripper +Z with link_6 +Z (wrist axis = forward). -->
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <!-- Tianyi 总装 gripper mounted to link_6 with rpy(0,0,-90deg). -->
+        <origin xyz="0 0 0" rpy="0 0 -1.5707963" />
         <parent link="link_6" />
         <child link="gripper_base_link" />
     </joint>
@@ -250,10 +249,10 @@
         </collision>
     </link>
     <joint name="gripper_left_joint_1" type="revolute">
-        <origin xyz="0 -0.015 0.076799" rpy="0 0 0" />
+        <origin xyz="-0.015 0.01475 0.07679888" rpy="0 1.57079633 -1.57079633" />
         <parent link="gripper_base_link" />
         <child link="gripper_left_link_1" />
-        <axis xyz="-1 0 0" />
+        <axis xyz="0 0 1" />
         <limit lower="0.0" upper="0.9" effort="5" velocity="10" />
     </joint>
 
@@ -280,12 +279,12 @@
         </collision>
     </link>
     <joint name="gripper_right_joint_1" type="revolute">
-        <origin xyz="0 0.015 0.076799" rpy="0 0 0" />
+        <origin xyz="0.015 0.01475 0.07679888" rpy="0 1.57079633 -1.57079633" />
         <parent link="gripper_base_link" />
         <child link="gripper_right_link_1" />
-        <axis xyz="1 0 0" />
-        <limit lower="0.0" upper="0.9" effort="5" velocity="10" />
-        <mimic joint="gripper_left_joint_1" multiplier="1.0" offset="0" />
+        <axis xyz="0 0 1" />
+        <limit lower="-0.9" upper="0.9" effort="5" velocity="10" />
+        <mimic joint="gripper_left_joint_1" multiplier="-1.0" offset="0" />
     </joint>
 
     <!-- TCP. 0.15m placeholder along gripper's +X (fingertip contact point).

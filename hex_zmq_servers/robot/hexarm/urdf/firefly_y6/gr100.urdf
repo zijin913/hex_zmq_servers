@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Firefly Y6 6-DOF arm with GR100 gripper mass lumped into link_6 inertial.
      Used by Dynamics for gravity compensation (key: firefly_y6_gr100). -->
-<!-- Lumped link_6 inertial (bare link_6 0.0076kg + gr100 base 0.4716kg + L1+L2 0.0562kg = 0.5354kg).
-     CoM mass-weighted in link_6 frame, with identity gripper_base mounting (rpy=0,0,0).
-     Inertia approximated via parallel axis theorem (off-diagonals zeroed for simplicity;
-     cross products are small <1e-4 and don't affect static gravity torque). -->
+<!-- Lumped link_6 inertial (bare link_6 0.0076kg + Tianyi 总装 gripper: body 0.26211kg
+     + 2 claws 0.0551kg = 0.32481kg). Gripper mounted rpy(0,0,-90deg); CoM mass-weighted in
+     link_6 frame at neutral (claws q=0). Inertia via parallel-axis (off-diagonals zeroed;
+     small, don't affect static gravity torque). -->
 <robot name="firefly_y6">
     <link name="base_link">
         <inertial>
@@ -182,9 +182,9 @@
     <link name="link_6">
         <!-- Lumped: bare link_6 + entire gr100 gripper. See header comment. -->
         <inertial>
-            <origin xyz="-0.00200 0 0.04898" rpy="0 0 0" />
-            <mass value="0.5354" />
-            <inertia ixx="0.000717" ixy="0" ixz="0" iyy="0.000637" iyz="0" izz="0.000341" />
+            <origin xyz="0.00431 0 0.05872" rpy="0 0 0" />
+            <mass value="0.32481" />
+            <inertia ixx="0.000743" ixy="0" ixz="0" iyy="0.000565" iyz="0" izz="0.000308" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />

@@ -8,6 +8,9 @@
         <exclude body1="left_link_4" body2="left_link_5"/>
         <exclude body1="left_link_5" body2="left_link_6"/>
         <exclude body1="left_link_6" body2="left_gripper_base_link"/>
+        <exclude body1="left_link_6" body2="left_gripper_mount"/>
+        <exclude body1="left_gripper_mount" body2="left_gripper_left_link_1"/>
+        <exclude body1="left_gripper_mount" body2="left_gripper_right_link_1"/>
         <exclude body1="left_gripper_base_link" body2="left_gripper_left_link_1"/>
         <exclude body1="left_gripper_base_link" body2="left_gripper_right_link_1"/>
         <exclude body1="left_gripper_left_link_1" body2="left_gripper_right_link_1"/>
@@ -20,16 +23,18 @@
         <exclude body1="right_link_4" body2="right_link_5"/>
         <exclude body1="right_link_5" body2="right_link_6"/>
         <exclude body1="right_link_6" body2="right_gripper_base_link"/>
+        <exclude body1="right_link_6" body2="right_gripper_mount"/>
+        <exclude body1="right_gripper_mount" body2="right_gripper_left_link_1"/>
+        <exclude body1="right_gripper_mount" body2="right_gripper_right_link_1"/>
         <exclude body1="right_gripper_base_link" body2="right_gripper_left_link_1"/>
         <exclude body1="right_gripper_base_link" body2="right_gripper_right_link_1"/>
         <exclude body1="right_gripper_left_link_1" body2="right_gripper_right_link_1"/>
     </contact>
 
     <equality>
-        <!-- left arm gripper coupling (GR100 lobster: right claw mimics left) -->
-        <joint joint1="left_gripper_left_joint_1" joint2="left_gripper_right_joint_1"/>
-        <!-- right arm gripper coupling -->
-        <joint joint1="right_gripper_left_joint_1" joint2="right_gripper_right_joint_1"/>
+        <!-- gripper coupling (Tianyi 总装: right claw = -left claw, mimic multiplier -1) -->
+        <joint joint1="left_gripper_left_joint_1" joint2="left_gripper_right_joint_1" polycoef="0 -1 0 0 0"/>
+        <joint joint1="right_gripper_left_joint_1" joint2="right_gripper_right_joint_1" polycoef="0 -1 0 0 0"/>
     </equality>
 
     <actuator>
