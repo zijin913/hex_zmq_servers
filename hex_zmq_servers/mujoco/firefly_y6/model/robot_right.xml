@@ -45,14 +45,15 @@
                                     <inertial pos="-0.00386 0 0.04222" mass="0.4716" diaginertia="0.000324 0.000324 0.000226"/>
                                     <geom type="mesh" rgba="1 1 1 1" mesh="gripper_base_link"/>
 
-                                    <!-- Wrist camera + visual mesh — see robot_left.xml for the
-                                         coordinate transformation from archer_l6y's frame. -->
-                                    <geom pos="-0.1201 0 0.0404" quat="0.7071068 0 -0.7071068 0"
+                                    <!-- Wrist camera + visual mesh — derived from real hand-eye calibration
+                                         (hand_eye_calibration/results/dual/right_hand.json, T_cam2gripper).
+                                         See robot_left.xml for the frame conventions. -->
+                                    <geom pos="-0.0665073 -0.0036781 0.0711148" quat="0.5794969 -0.3468796 0.3910128 0.6252735"
                                           type="mesh" rgba="0.667 0.698 0.769 1" mesh="camera_link"/>
                                     <camera name="right_end_camera"
-                                            pos="-0.105 0 0.066"
-                                            quat="0.1830127 0.6830127 -0.6830127 -0.1830127"
-                                            fovy="50"/>
+                                            pos="-0.0670463 0.0288147 0.0715402"
+                                            quat="0.1479058 0.6974347 -0.6840006 -0.1544408"
+                                            fovy="43.2"/>
 
                                     <!-- ee frame (TCP 0.187m along +Z, measured) -->
                                     <body name="right_ee_frame" pos="0 0 0.187" quat="1 0 0 0">
