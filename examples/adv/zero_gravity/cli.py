@@ -52,6 +52,13 @@ def main():
     # truly floating but will drift if gravity model is slightly wrong.
     kp_scale = float(cfg.get("kp_scale", 0.05))
     kd_scale = float(cfg.get("kd_scale", 0.05))
+    # Gripper joint (last joint when use_gripper) carries NO gravity load — its
+    # comp torque is 0 — so the arm's spring just makes it hard to open/close by
+    # hand in zero-g. Scale it separately; default free (kp=0) with light damping
+    # so it can be posed by hand without flopping. Raise gripper_kp_scale for a
+    # soft "memory" spring, gripper_kd_scale for more drag.
+    gripper_kp_scale = float(cfg.get("gripper_kp_scale", 0.0))
+    gripper_kd_scale = float(cfg.get("gripper_kd_scale", kd_scale))
     # Per-arm overrides for server-side defaults (must match
     # launchers/configs/{left,right}_arm_cfg.json mit_kp/mit_kd).
     default_kp = np.array(cfg.get("mit_kp",
@@ -99,6 +106,10 @@ def main():
             n = cur_q.shape[0]
             kp = default_kp[:n] * kp_scale
             kd = default_kd[:n] * kd_scale
+            if use_gripper and n >= 1:
+                # soften only the gripper joint (last entry)
+                kp[-1] = default_kp[n - 1] * gripper_kp_scale
+                kd[-1] = default_kd[n - 1] * gripper_kd_scale
             cmds = np.column_stack([
                 cur_q,            # pos = where we are now
                 np.zeros(n),      # tar_vel — doesn't matter at kd~0

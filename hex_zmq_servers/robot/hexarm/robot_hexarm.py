@@ -72,6 +72,21 @@ class HexRobotHexarm(HexRobotBase):
             [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0],
         )
 
+        # Gripper (Hands device) compliance for zero-gravity hand-posing. The
+        # gripper is POSITION-controlled — its MIT kp/kd/torque are ignored — and
+        # the Hands stepper freezes the commanded angle once holding torque
+        # exceeds set_pos_torque's gate (firmware default 3.0 N·m), so the servo
+        # fights back and it can't be posed by hand. When a client requests a
+        # compliant gripper (gripper-joint kp≈0, as the zero-gravity cli sends),
+        # we open that gate to gripper_compliant_torque so the streamed "current
+        # angle" command simply tracks the hand; for normal position/grasp
+        # commands (kp>0) we restore gripper_default_torque.
+        self.__gripper_compliant_torque = float(
+            robot_config.get("gripper_compliant_torque", 50.0))
+        self.__gripper_default_torque = float(
+            robot_config.get("gripper_default_torque", 3.0))
+        self.__gripper_compliant = False
+
         # Idle-hold keep-alive (opt-in). When the client command stream has a
         # gap (teleop clutch released, pause, jitter, or no client at all),
         # re-send the last command / hold the measured pose so the firmware's
@@ -381,11 +396,23 @@ class HexRobotHexarm(HexRobotBase):
         )
         self.__arm.motor_command(CommandType.MIT, arm_cmd)
 
-        # gripper — use POSITION control (Hands device requires it, MIT is ignored)
+        # gripper — POSITION control (Hands device only honors POSITION; its
+        # MIT/torque inputs are ignored). For a compliant gripper (gripper-joint
+        # kp≈0, e.g. zero-gravity hand-posing) open the Hands torque gate so the
+        # commanded angle tracks the hand instead of freezing → backdrivable;
+        # otherwise keep the normal gate for ordinary position/grasp commands.
         if self.__gripper is not None:
             try:
-                gripper_pos = cmd_pos[self.__motor_idx["robot_gripper"]]
-                self.__gripper.motor_command(CommandType.POSITION, gripper_pos)
+                g_idx = self.__motor_idx["robot_gripper"]
+                want_compliant = bool(
+                    np.all(np.asarray(cmd_kp)[g_idx] <= 1e-6))
+                if want_compliant != self.__gripper_compliant:
+                    self.__gripper.set_pos_torque(
+                        self.__gripper_compliant_torque if want_compliant
+                        else self.__gripper_default_torque)
+                    self.__gripper_compliant = want_compliant
+                self.__gripper.motor_command(
+                    CommandType.POSITION, cmd_pos[g_idx])
             except (ValueError, Exception):
                 # Hands device may raise if motor data not yet available
                 pass
