@@ -6,14 +6,17 @@
 # Date  : 2025-09-25
 ################################################################
 
-import argparse, json, time
+import argparse, json
 from hex_zmq_servers import (
-    HexRate,
-    hex_zmq_ts_now,
-    hex_zmq_ts_delta_ms,
     HEX_LOG_LEVEL,
     hex_log,
     HexRobotHexarmClient,
+)
+from hex_robo_utils import (
+    HexPlotUtilPlotJuggler as HexPlotUtil,
+    HexRate,
+    hex_ts_delta_ms,
+    hex_ts_now,
 )
 
 import numpy as np
@@ -33,24 +36,38 @@ def main():
 
     # robot client
     client = HexRobotHexarmClient(net_config=net_config)
+    plot_util = HexPlotUtil()
 
-    dofs = client.get_dofs()[0]
+    dof_arr = client.get_dofs()
+    dofs = {
+        "robot_arm": int(dof_arr[0]),
+        "robot_gripper": int(dof_arr[1]) if len(dof_arr) > 1 else None,
+        "sum": int(dof_arr.sum()),
+    }
     limits = client.get_limits()
     hex_log(HEX_LOG_LEVEL["info"], f"dofs: {dofs}")
-    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits}")
+    hex_log(HEX_LOG_LEVEL["info"], f"limits: {limits.shape}")
 
     rate = HexRate(500)
     while True:
         states_hdr, states = client.get_states()
         if states_hdr is not None:
-            curr_ts = hex_zmq_ts_now()
+            curr_ts = hex_ts_now()
             hex_log(
                 HEX_LOG_LEVEL["info"],
-                f"states_seq: {states_hdr['args']}; delay: {hex_zmq_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
+                f"states_seq: {states_hdr['args']}; delay: {hex_ts_delta_ms(curr_ts, states_hdr['ts'])}ms"
             )
-            hex_log(HEX_LOG_LEVEL["info"], f"states pos: {states[:, 0]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states vel: {states[:, 1]}")
-            hex_log(HEX_LOG_LEVEL["info"], f"states eff: {states[:, 2]}")
+            arm_q = states[:dofs['robot_arm'], 0]
+            arm_dq = states[:dofs['robot_arm'], 1]
+            plot_dict = {
+                "pos": arm_q.tolist(),
+                "vel": arm_dq.tolist(),
+            }
+            plot_util.add_data(
+                name="hexarm",
+                data=plot_dict,
+            )
+            plot_util.send_data(clear=True)
 
         cmds = np.array([
             0.2,
@@ -61,7 +78,7 @@ def main():
             0.0,
             0.5,
         ])
-        client.set_cmds(cmds)
+        client.set_cmds(cmds[:dofs['sum']])
 
         rate.sleep()
 

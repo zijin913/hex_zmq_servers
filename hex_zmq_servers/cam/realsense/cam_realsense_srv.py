@@ -36,6 +36,7 @@ CAMERA_CONFIG = {
     "resolution": [640, 480],
     "frame_rate": 30,
     "sens_ts": True,
+    "enable_imu": False,
 }
 
 
@@ -64,8 +65,74 @@ class HexCamRealsenseServer(HexCamServerBase):
             return self._get_frame(recv_hdr, True)
         elif recv_hdr["cmd"] == "get_rgbd":
             return self._get_rgbd(recv_hdr)
+        elif recv_hdr["cmd"] == "get_imu":
+            return self._get_imu(recv_hdr)
+        elif recv_hdr["cmd"] == "get_rgbd_imu":
+            return self._get_rgbd_imu(recv_hdr)
         else:
             raise ValueError(f"unknown command: {recv_hdr['cmd']}")
+
+    def _get_imu(self, recv_hdr: dict):
+        if not getattr(self._device, "imu_enabled", lambda: False)():
+            return {"cmd": "get_imu_failed",
+                    "args": "imu not enabled"}, None
+        gyro, accel = self._device.drain_imu()
+        gyro_bytes = gyro.astype(np.float64).tobytes()
+        accel_bytes = accel.astype(np.float64).tobytes()
+        combined = np.frombuffer(gyro_bytes + accel_bytes, dtype=np.uint8)
+        return {
+            "cmd": "get_imu_ok",
+            "args": {
+                "gyro_shape": list(gyro.shape),
+                "gyro_dtype": str(gyro.dtype),
+                "accel_shape": list(accel.shape),
+                "accel_dtype": str(accel.dtype),
+            }
+        }, combined
+
+    def _get_rgbd_imu(self, recv_hdr: dict):
+        """Return the latest RGB+Depth plus any buffered IMU samples since last call."""
+        try:
+            if self._realtime_mode:
+                rgb_ts, rgb_count, rgb = self._rgb_queue[-1]
+                depth_ts, depth_count, depth = self._depth_queue[-1]
+            else:
+                rgb_ts, rgb_count, rgb = self._rgb_queue.popleft()
+                depth_ts, depth_count, depth = self._depth_queue.popleft()
+        except IndexError:
+            return {"cmd": "get_rgbd_imu_failed"}, None
+        except Exception as e:
+            print(f"\033[91mget_rgbd_imu failed: {e}\033[0m")
+            return {"cmd": "get_rgbd_imu_failed"}, None
+
+        if getattr(self._device, "imu_enabled", lambda: False)():
+            gyro, accel = self._device.drain_imu()
+        else:
+            gyro = np.zeros((0, 4), dtype=np.float64)
+            accel = np.zeros((0, 4), dtype=np.float64)
+
+        rgb_bytes = rgb.tobytes()
+        depth_bytes = depth.tobytes()
+        gyro_bytes = gyro.astype(np.float64).tobytes()
+        accel_bytes = accel.astype(np.float64).tobytes()
+        combined = np.frombuffer(
+            rgb_bytes + depth_bytes + gyro_bytes + accel_bytes, dtype=np.uint8)
+
+        return {
+            "cmd": "get_rgbd_imu_ok",
+            "ts": rgb_ts,
+            "args": {
+                "rgb_shape": list(rgb.shape),
+                "rgb_dtype": str(rgb.dtype),
+                "depth_shape": list(depth.shape),
+                "depth_dtype": str(depth.dtype),
+                "gyro_shape": list(gyro.shape),
+                "gyro_dtype": str(gyro.dtype),
+                "accel_shape": list(accel.shape),
+                "accel_dtype": str(accel.dtype),
+                "count": int(rgb_count),
+            }
+        }, combined
 
 
 if __name__ == "__main__":

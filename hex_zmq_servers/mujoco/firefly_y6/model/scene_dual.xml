@@ -1,0 +1,140 @@
+<mujoco model="firefly_y6 dual-arm scene">
+    <compiler angle="radian"/>
+    <option integrator="implicitfast"/>
+    <option timestep="1e-3"/>
+
+    <statistic center="0.3 0 0.5" extent="1.0" meansize="0.05"/>
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0"/>
+        <rgba haze="0.15 0.25 0.35 1"/>
+        <global azimuth="120" elevation="-20"/>
+        <map znear="0.001" zfar="50"/>
+    </visual>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+        <include file="assets/assets.xml"/>
+    </asset>
+
+    <worldbody>
+        <light pos="0.0 0.0 1.5" directional="true"/>
+        <geom name="floor" size="0.0 0.0 0.05" type="plane" material="groundplane"/>
+
+        <!-- Left arm (Y=+0.224), 真机校准: 双臂相距 0.448m -->
+        <body pos="0.0 0.224 0.25">
+            <include file="robot_left.xml"/>
+        </body>
+
+        <!-- Right arm (Y=-0.224), 真机校准: 双臂相距 0.448m -->
+        <body pos="0.0 -0.224 0.25">
+            <include file="robot_right.xml"/>
+        </body>
+
+        <body name="table" pos="0.5 0.0 0.3" quat="0.707107 0 0 0.707107">
+            <geom mesh="table_link" pos="0 0 0" type="mesh" name="table" rgba="0.2 0.2 0.2 1"/>
+        </body>
+
+        <!-- Scanned coffee mug with handle -->
+        <body name="mug" pos="0.50 0.10 0.47">
+            <joint name="mug_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.040" mass="0.12" diaginertia="0.00005 0.00005 0.00004"/>
+            <geom type="mesh" mesh="scanned_mug_visual" material="scanned_mug_mat"
+                  contype="0" conaffinity="0" group="2" name="mug_visual"/>
+            <geom type="cylinder" size="0.027 0.040" pos="0 0 0.040"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="mug_collision"/>
+        </body>
+
+        <body name="apple" pos="0.46 -0.10 0.5">
+            <joint name="apple_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002"/>
+            <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.028" type="sphere" name="apple_body" rgba="0.86 0.08 0.10 1"/>
+            <geom contype="0" conaffinity="0" pos="0 0 0.03" size="0.004 0.012" type="capsule" name="apple_stem" rgba="0.38 0.22 0.10 1"/>
+            <geom contype="0" conaffinity="0" pos="0.01 0.0 0.035" euler="0 0.5 0" size="0.004 0.009" type="capsule" name="apple_leaf" rgba="0.12 0.62 0.20 1"/>
+        </body>
+
+        <body name="block" pos="0.52 0.0 0.47">
+            <joint name="block_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.015" mass="0.02" diaginertia="0.00001 0.00001 0.00001"/>
+            <geom type="mesh" mesh="scanned_block_visual" material="scanned_block_mat"
+                  contype="0" conaffinity="0" group="2" name="block_visual"/>
+            <geom type="box" size="0.015 0.015 0.015" pos="0 0 0.015"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="block_collision"/>
+        </body>
+
+        <body name="dog" pos="0.46 0.0 0.47">
+            <joint name="dog_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.025" mass="0.03" diaginertia="0.00002 0.00002 0.00002"/>
+            <geom type="mesh" mesh="scanned_dog_visual" material="scanned_dog_mat"
+                  contype="0" conaffinity="0" group="2" name="dog_visual"/>
+            <geom type="box" size="0.017 0.024 0.025" pos="0 0 0.025"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="dog_collision"/>
+        </body>
+
+        <body name="kong" pos="0.56 0.10 0.47">
+            <joint name="kong_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.036" mass="0.04" diaginertia="0.00002 0.00002 0.00002"/>
+            <geom type="mesh" mesh="scanned_kong_visual" material="scanned_kong_mat"
+                  contype="0" conaffinity="0" group="2" name="kong_visual"/>
+            <geom type="cylinder" size="0.022 0.036" pos="0 0 0.036"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1.2 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="kong_collision"/>
+        </body>
+
+        <body name="panda" pos="0.56 -0.10 0.47">
+            <joint name="panda_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0.038" mass="0.05" diaginertia="0.00003 0.00003 0.00003"/>
+            <geom type="mesh" mesh="scanned_panda_visual" material="scanned_panda_mat"
+                  contype="0" conaffinity="0" group="2" name="panda_visual"/>
+            <geom type="box" size="0.030 0.023 0.038" pos="0 0 0.038"
+                  condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"
+                  group="3" rgba="0 0 0 0" name="panda_collision"/>
+        </body>
+
+        <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
+
+        <!-- Side camera: 严格还原真机标定姿态 (hand_eye_calibration/results/dual/side.json)
+             T_cam2base 平移 (0.0358,-0.1839,0.5785) 相对左臂基座
+             world pos = left_base_world (0,0.224,0.25) + T_cam2base 平移 = (0.0358,0.0401,0.8285)
+             xyaxes 由 OpenCV 相机系 (X右/Y下/Z前视) 转 MuJoCo (X右/Y上=-Y下/Z后=-Z视)。
+             光轴下俯约 62.8°，水平横置传感器。
+             重要: 点云融合用 side.json 的 T_cam2base 做外参 (soda_os 在 sim/real 都加载它),
+             所以 sim 里这台相机的位姿必须和 side.json 一致, 否则 side 点云会与 wrist 点云错位/重影。
+             不要为了"视觉居中"平移它 (会同时破坏点云对齐和 sim-real 一致性)。 -->
+        <body name="side_camera_mount" pos="0 0 0">
+            <camera name="side_camera" pos="0.0358360 0.0400526 0.8284677"
+                    xyaxes="-0.0048373 -0.9999543 0.0082441 0.8895721 -0.0005373 0.4567946" fovy="43.2"/>
+            <!-- D435 body mesh at the device geometric center (= optical + 0.0325 m along the baseline,
+                 the fixed RGB->center device offset). The <camera> (RGB optical) above stays at the
+                 side.json calibrated, left-offset pose so the side point cloud still fuses correctly —
+                 same RealSense treatment as the wrist cams. Generated by tools/sync_sim_cameras_from_calib.py. -->
+            <geom name="side_cam_body" pos="0.0356788 0.0075541 0.8287356" quat="0.1000969 -0.4058116 -0.6991943 -0.5800215"
+                  type="mesh" rgba="0.667 0.698 0.769 1" mesh="camera_link" contype="0" conaffinity="0"/>
+            <geom name="side_cam_stick" pos="0.0356788 0.0075541 0.4143678"
+                  type="cylinder" size="0.008 0.4144"
+                  rgba="0.1 0.5 1.0 0.5" contype="0" conaffinity="0"/></body>
+    </worldbody>
+
+    <include file="setting_dual.xml"/>
+
+    <keyframe>
+        <!-- qpos: 8 left robot + 8 right robot + 7*6 objects = 58 -->
+        <!-- ctrl: 7 left + 7 right = 14 actuators -->
+        <key name="home" qpos="
+        0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+        0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+        0.50  0.10 0.47 0.0 0.0 0.0 1.0
+        0.46 -0.10 0.5  0.0 0.0 0.0 1.0
+        0.52  0.00 0.47 0.0 0.0 0.0 1.0
+        0.46  0.00 0.47 0.0 0.0 0.0 1.0
+        0.56  0.10 0.47 0.0 0.0 0.0 1.0
+        0.56 -0.10 0.47 0.0 0.0 0.0 1.0" ctrl="
+        0.0 0.0 0.0 0.0 0.0 0.0 0.0
+        0.0 0.0 0.0 0.0 0.0 0.0 0.0"/>
+    </keyframe>
+</mujoco>

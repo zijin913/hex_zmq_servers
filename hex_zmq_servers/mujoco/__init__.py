@@ -7,9 +7,7 @@
 ################################################################
 
 from .mujoco_base import HexMujocoBase, HexMujocoClientBase, HexMujocoServerBase
-from .archer_y6 import HexMujocoArcherY6, HexMujocoArcherY6Client, HexMujocoArcherY6Server
-from .archer_l6y import HexMujocoArcherL6Y, HexMujocoArcherL6YClient, HexMujocoArcherL6YServer
-from .e3_desktop import HexMujocoE3Desktop, HexMujocoE3DesktopClient, HexMujocoE3DesktopServer
+from .firefly_y6 import HexMujocoFireflyY6Dual, HexMujocoFireflyY6DualClient, HexMujocoFireflyY6DualServer
 
 __all__ = [
     # base
@@ -17,18 +15,8 @@ __all__ = [
     "HexMujocoClientBase",
     "HexMujocoServerBase",
 
-    # archer_y6
-    "HexMujocoArcherY6",
-    "HexMujocoArcherY6Client",
-    "HexMujocoArcherY6Server",
-
-    # archer_l6y
-    "HexMujocoArcherL6Y",
-    "HexMujocoArcherL6YClient",
-    "HexMujocoArcherL6YServer",
-
-    # e3_desktop
-    "HexMujocoE3Desktop",
-    "HexMujocoE3DesktopClient",
-    "HexMujocoE3DesktopServer",
+    # firefly_y6 (dual-arm)
+    "HexMujocoFireflyY6Dual",
+    "HexMujocoFireflyY6DualClient",
+    "HexMujocoFireflyY6DualServer",
 ]

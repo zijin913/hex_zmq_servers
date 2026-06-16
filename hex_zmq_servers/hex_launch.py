@@ -335,7 +335,7 @@ class HexLaunch:
                     print_start, print_end = f"{color_start}[{prefix}] ", f"{color_end}"
                     log_start, log_end = f"[{level_str}] ", ""
                 else:
-                    print_start, print_end = f"\033[31m[FATAL][{prefix}] ", "\033[0m"
+                    print_start, print_end = f"\033[33m[{prefix}][stderr] ", "\033[0m"
                     log_start, log_end = "", ""
 
                 print(f"{print_start}{line}{print_end}", flush=True)

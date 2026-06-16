@@ -14,30 +14,12 @@ import os
 
 urdf_dir = os.path.join(os.path.dirname(__file__), "urdf")
 HEXARM_URDF_PATH_DICT = {
-    "archer_y6_empty":
-    f"{urdf_dir}/archer_y6/empty.urdf",
-    "archer_y6_gp100":
-    f"{urdf_dir}/archer_y6/gp100.urdf",
-    "archer_y6_gp100_handle":
-    f"{urdf_dir}/archer_y6/gp100_handle.urdf",
-    "archer_y6_gp100_p050":
-    f"{urdf_dir}/archer_y6/gp100_p050.urdf",
-    "archer_y6_gp100_p050_handle":
-    f"{urdf_dir}/archer_y6/gp100_p050_handle.urdf",
-    "archer_l6y_empty":
-    f"{urdf_dir}/archer_l6y/empty.urdf",
-    "archer_l6y_gp100":
-    f"{urdf_dir}/archer_l6y/gp100.urdf",
-    "archer_l6y_gp100_handle":
-    f"{urdf_dir}/archer_l6y/gp100_handle.urdf",
-    "archer_l6y_gp100_p050":
-    f"{urdf_dir}/archer_l6y/gp100_p050.urdf",
-    "archer_l6y_gp100_p050_handle":
-    f"{urdf_dir}/archer_l6y/gp100_p050_handle.urdf",
-    "archer_l6y_gp100_d435i":
-    f"{urdf_dir}/archer_l6y/gp100_d435i.urdf",
-    "l6y_gp100":
-    f"{urdf_dir}/archer_l6y/l6y_gp100.urdf",
+    "firefly_y6_empty":
+    f"{urdf_dir}/firefly_y6/empty.urdf",
+    "firefly_y6_gr100":
+    f"{urdf_dir}/firefly_y6/gr100.urdf",
+    "y6_gr100":
+    f"{urdf_dir}/firefly_y6/y6_gr100.urdf",
 }
 
 __all__ = [

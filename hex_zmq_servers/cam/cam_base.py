@@ -12,7 +12,9 @@ from collections import deque
 from abc import abstractmethod
 
 from ..device_base import HexDeviceBase
-from ..zmq_base import HexZMQClientBase, HexZMQServerBase, HexRate
+from ..zmq_base import HexZMQClientBase, HexZMQServerBase
+
+from hex_robo_utils import HexRate
 
 NET_CONFIG = {
     "ip": "127.0.0.1",
@@ -54,9 +56,16 @@ class HexCamClientBase(HexZMQClientBase):
         self._used_depth_seq = 0
         self._rgbd_seq = 0
         self._used_rgbd_seq = 0
+        # Monotonic per-frame seq stamped by _recv_loop so the newest=True dedup
+        # works: get_rgbd carries a shape/dtype dict in hdr["args"] (constant
+        # across frames), not a sequence number, so without this every queued
+        # frame would compare equal and get_rgb(newest=True) would return one
+        # frame then None forever.
+        self._frame_seq = 0
         self._rgb_queue = deque(maxlen=self._deque_maxlen)
         self._depth_queue = deque(maxlen=self._deque_maxlen)
         self._rgbd_queue = deque(maxlen=self._deque_maxlen)
+        self._recv_loop_hz = net_config.get("recv_loop_hz", 200)
 
     def __del__(self):
         HexZMQClientBase.__del__(self)
@@ -170,11 +179,17 @@ class HexCamClientBase(HexZMQClientBase):
             return None, None
 
     def _recv_loop(self):
-        rate = HexRate(200)
+        rate = HexRate(self._recv_loop_hz)
         while self._recv_flag:
             # Use get_rgbd for synchronized frames (1 request instead of 2)
             hdr, rgb, depth = self._get_rgbd_inner()
             if hdr is not None:
+                # Replace the get_rgbd shape/dtype dict in hdr["args"] with a
+                # monotonic per-frame seq so the newest=True dedup in get_rgb /
+                # get_depth / get_rgbd works (args was already consumed to
+                # unpack the buffer inside _get_rgbd_inner).
+                self._frame_seq = (self._frame_seq + 1) % self._max_seq_num
+                hdr = {**hdr, "args": self._frame_seq}
                 self._rgbd_queue.append((hdr, rgb, depth))
                 # Also populate separate queues for backwards compatibility
                 # Create separate headers with correct cmd for legacy code

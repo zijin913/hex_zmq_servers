@@ -1,0 +1,47 @@
+<mujocoinclude>
+    <!-- Firefly Y6 arm meshes -->
+    <mesh name="arm_base_link" file="arm_base_link.STL"/>
+    <mesh name="arm_link_1" file="arm_link_1.STL"/>
+    <mesh name="arm_link_2" file="arm_link_2.STL"/>
+    <mesh name="arm_link_3" file="arm_link_3.STL"/>
+    <mesh name="arm_link_4" file="arm_link_4.STL"/>
+    <mesh name="arm_link_5" file="arm_link_5.STL"/>
+    <mesh name="arm_link_6" file="arm_link_6.STL"/>
+
+    <!-- GR100 lobster-claw gripper meshes -->
+    <mesh name="gripper_base_link" file="gripper_base_link.STL"/>
+    <mesh name="gripper_L1" file="gripper_L1.STL"/>
+    <mesh name="gripper_L2" file="gripper_L2.STL"/>
+
+    <!-- Wrist camera visual mesh (copied from archer_l6y; D435i body) -->
+    <mesh name="camera_link" file="camera_link.STL"/>
+
+    <!-- table -->
+    <mesh name="table_link" file="table_link.STL" scale="0.001 0.001 0.001"/>
+
+    <!-- Scanned objects (Google Scanned Objects dataset) -->
+    <mesh name="scanned_block_visual" file="scanned_block/model.obj"/>
+    <texture name="scanned_block_tex" type="2d" file="scanned_block/texture.png"/>
+    <material name="scanned_block_mat" texture="scanned_block_tex" specular="0.5" shininess="0.5"/>
+
+    <mesh name="scanned_dog_visual" file="scanned_dog/model.obj"/>
+    <texture name="scanned_dog_tex" type="2d" file="scanned_dog/texture.png"/>
+    <material name="scanned_dog_mat" texture="scanned_dog_tex" specular="0.5" shininess="0.5"/>
+
+    <mesh name="scanned_kong_visual" file="scanned_kong/model.obj"/>
+    <texture name="scanned_kong_tex" type="2d" file="scanned_kong/texture.png"/>
+    <material name="scanned_kong_mat" texture="scanned_kong_tex" specular="0.5" shininess="0.5"/>
+
+    <mesh name="scanned_panda_visual" file="scanned_panda/model.obj"/>
+    <texture name="scanned_panda_tex" type="2d" file="scanned_panda/texture.png"/>
+    <material name="scanned_panda_mat" texture="scanned_panda_tex" specular="0.5" shininess="0.5"/>
+
+    <mesh name="scanned_mug_visual" file="scanned_mug/model.obj" scale="0.6 0.6 0.6"/>
+    <texture name="scanned_mug_tex" type="2d" file="scanned_mug/texture.png"/>
+    <material name="scanned_mug_mat" texture="scanned_mug_tex" specular="0.5" shininess="0.5"/>
+
+    <!-- PartNet-Mobility Table id=22508 -->
+    <mesh name="t22508_body" file="partnet_table_22508/table_22508_body.obj" scale="0.65 0.65 0.65"/>
+    <mesh name="t22508_drawer" file="partnet_table_22508/table_22508_drawer.obj" scale="0.65 0.65 0.65"/>
+    <material name="t22508_wood" rgba="0.2 0.11 0.075 1" specular="0.3" shininess="0.3"/>
+</mujocoinclude>

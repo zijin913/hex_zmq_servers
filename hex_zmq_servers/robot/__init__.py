@@ -7,8 +7,6 @@
 ################################################################
 
 from .robot_base import HexRobotBase, HexRobotClientBase, HexRobotServerBase
-from .dummy import HexRobotDummy, HexRobotDummyClient, HexRobotDummyServer
-from .gello import HexRobotGello, HexRobotGelloClient, HexRobotGelloServer
 from .hexarm import HexRobotHexarm, HexRobotHexarmClient, HexRobotHexarmServer, HEXARM_URDF_PATH_DICT
 
 __all__ = [
@@ -19,16 +17,6 @@ __all__ = [
     "HexRobotBase",
     "HexRobotClientBase",
     "HexRobotServerBase",
-
-    # dummy
-    "HexRobotDummy",
-    "HexRobotDummyClient",
-    "HexRobotDummyServer",
-
-    # gello
-    "HexRobotGello",
-    "HexRobotGelloClient",
-    "HexRobotGelloServer",
 
     # hexarm
     "HexRobotHexarm",

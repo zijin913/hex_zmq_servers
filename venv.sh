@@ -10,23 +10,23 @@ set -Eeuo pipefail
 MINIMAL=false
 EXAMPLES=true
 while [[ $# -gt 0 ]]; do
-  case $1 in
-  --min)
-    MINIMAL=true
-    shift
-    ;;
-  --pkg-only)
-    EXAMPLES=false
-    shift
-    ;;
-  *)
-    echo "Unknown option: $1"
-    echo "Usage: $0 [--min|--pkg-only]"
-    echo "  --min : Install with minimal package"
-    echo "  --pkg-only : Install without examples"
-    exit 1
-    ;;
-  esac
+	case $1 in
+	--min)
+		MINIMAL=true
+		shift
+		;;
+	--pkg-only)
+		EXAMPLES=false
+		shift
+		;;
+	*)
+		echo "Unknown option: $1"
+		echo "Usage: $0 [--min|--pkg-only]"
+		echo "  --min : Install with minimal package"
+		echo "  --pkg-only : Install without examples"
+		exit 1
+		;;
+	esac
 done
 
 CUR_DIR="$(pwd)"
@@ -37,12 +37,12 @@ echo "SCRIPT_DIR: $SCRIPT_DIR"
 cd $SCRIPT_DIR
 
 if ! command -v uv >/dev/null 2>&1; then
-  echo "Error: uv not found. Please install uv first." >&2
-  exit 1
+	echo "Error: uv not found. Please install uv first." >&2
+	exit 1
 fi
 
 if [ ! -d .venv ]; then
-  uv venv --python 3.10
+	uv venv --python 3.10
 fi
 source .venv/bin/activate
 
@@ -51,16 +51,16 @@ rm -rf dist build *.egg-info
 uv pip uninstall hex_zmq_servers || true
 
 if [ "$MINIMAL" = true ]; then
-  echo "Installing minimal package..."
-  uv pip install -e .
+	echo "Installing minimal package..."
+	uv pip install -e .
 else
-  echo "Installing with [all] extras..."
-  uv pip install -e .[all]
+	echo "Installing with [all] extras..."
+	uv pip install -e .[all]
 fi
 
 if [ "$EXAMPLES" = true ]; then
-  echo "Installing requirements for advanced examples..."
-  uv pip install -r examples/adv/requirements.txt
+	echo "Installing requirements for examples..."
+	uv pip install -r requirements_example.txt
 fi
 
 cd $CUR_DIR
