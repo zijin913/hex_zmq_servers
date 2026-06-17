@@ -77,7 +77,10 @@ class HexCamRealsense(HexCamBase):
             return
 
         # camera variables
-        self.__intri = np.zeros(4)
+        # [fx, fy, ppx, ppy, k1, k2, p1, p2, k3]. Coeffs (idx 4:9) carry the
+        # RealSense color distortion (inverse_brown_conrady). Length grew from
+        # 4 -> 9; all consumers slice [0:4], so this is backward compatible.
+        self.__intri = np.zeros(9)
 
         # open device
         self.__pipeline = rs.pipeline()
@@ -141,12 +144,14 @@ class HexCamRealsense(HexCamBase):
             self.__intri[1] = color_intrinsics.fy
             self.__intri[2] = color_intrinsics.ppx
             self.__intri[3] = color_intrinsics.ppy
+            self.__intri[4:9] = np.asarray(color_intrinsics.coeffs, dtype=float)[:5]
             probe.stop()
         else:
             # Original (no-IMU) path: start the real pipeline here so the
             # device stays claimed and intrinsics come straight from it.
             # Behaviour is byte-equivalent to the pre-IMU version.
             profile = self.__pipeline.start(config)
+            self.__force_depth_units()
             color_profile = profile.get_stream(rs.stream.color)
             color_intrinsics = color_profile.as_video_stream_profile(
             ).get_intrinsics()
@@ -154,6 +159,16 @@ class HexCamRealsense(HexCamBase):
             self.__intri[1] = color_intrinsics.fy
             self.__intri[2] = color_intrinsics.ppx
             self.__intri[3] = color_intrinsics.ppy
+            self.__intri[4:9] = np.asarray(color_intrinsics.coeffs, dtype=float)[:5]
+            # DIAGNOSTIC: log color distortion (dropped downstream — soda
+            # assumes zero distortion). D405's color lens may have larger
+            # coeffs than D435i, which would skew calibration + point cloud.
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"HexCamRealsense color intrinsics serial={self.__serial_number} "
+                    f"model={color_intrinsics.model} "
+                    f"fx={color_intrinsics.fx:.1f} fy={color_intrinsics.fy:.1f} "
+                    f"ppx={color_intrinsics.ppx:.1f} ppy={color_intrinsics.ppy:.1f} "
+                    f"coeffs={[round(c, 5) for c in color_intrinsics.coeffs]}")
 
         # IMU buffers
         self.__imu_lock = threading.Lock()
@@ -168,6 +183,38 @@ class HexCamRealsense(HexCamBase):
 
         # start work loop
         self._working.set()
+
+    def __force_depth_units(self):
+        """Force the depth sensor to 1mm units (0.001 m/unit).
+
+        Downstream (soda camera_service) hardcodes raw-uint16 -> meters as
+        ``/1000``, which assumes 1mm units. D435/D435i default to that, but
+        D405 defaults to 0.1mm (0.0001 m/unit), so without this the cloud
+        comes out 10x too far and gets pushed out of view / clipped.
+        Setting it to 0.001 is a no-op on cameras already at 1mm.
+        """
+        try:
+            dev = self.__pipeline.get_active_profile().get_device()
+            ds = dev.first_depth_sensor()
+            before = ds.get_option(rs.option.depth_units) \
+                if ds.supports(rs.option.depth_units) else None
+            scale_before = ds.get_depth_scale()
+            if ds.supports(rs.option.depth_units):
+                ds.set_option(rs.option.depth_units, 0.001)
+            after = ds.get_option(rs.option.depth_units) \
+                if ds.supports(rs.option.depth_units) else None
+            scale_after = ds.get_depth_scale()
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"HexCamRealsense depth_units: option {before}->{after}, "
+                    f"depth_scale {scale_before}->{scale_after} "
+                    f"(target 0.001; downstream assumes 1mm)")
+            if after is None or abs(after - 0.001) > 1e-6:
+                hex_log(HEX_LOG_LEVEL["warn"],
+                        "HexCamRealsense depth_units did NOT stick at 0.001 — "
+                        "point cloud will be mis-scaled")
+        except Exception as exc:
+            hex_log(HEX_LOG_LEVEL["warn"],
+                    f"HexCamRealsense set depth_units failed: {exc}")
 
     def get_intri(self) -> np.ndarray:
         self._wait_for_working()
@@ -316,6 +363,7 @@ class HexCamRealsense(HexCamBase):
                 self.__imu_active = False
                 self.__config = self.__build_video_only_config()
                 self.__pipeline.start(self.__config)
+            self.__force_depth_units()
 
             while self._working.is_set() and not stop_event.is_set():
                 stop_event.wait(0.1)
