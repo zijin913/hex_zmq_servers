@@ -41,6 +41,11 @@ class HexCamRealsense(HexCamBase):
     ):
         HexCamBase.__init__(self, realtime_mode)
 
+        # 防御性:即使下面 try/except 或 "camera not found" 早退,这两个锁也已设置,
+        # 不会让 work_loop 在 self.__cb_lock 上炸 AttributeError(productization fix)。
+        self.__cb_lock = threading.Lock()
+        self.__imu_lock = threading.Lock()
+
         try:
             self.__serial_number = camera_config.get("serial_number", None)
             self.__resolution = camera_config["resolution"]
@@ -71,10 +76,11 @@ class HexCamRealsense(HexCamBase):
             self.__serial_number = available_devices[0]
             print(f"  Using first available device: {self.__serial_number}")
         elif self.__serial_number not in available_devices:
-            print(
-                f"can not find device with serial number: {self.__serial_number}"
+            # 早退 raise(productization fix):原代码 return 但留下半初始化对象,
+            # work_loop 用 self.__imu_active / __cb_lock 等未设 attr 崩 AttributeError。
+            raise RuntimeError(
+                f"RealSense not found: serial={self.__serial_number}, available={available_devices}"
             )
-            return
 
         # camera variables
         # [fx, fy, ppx, ppy, k1, k2, p1, p2, k3]. Coeffs (idx 4:9) carry the
