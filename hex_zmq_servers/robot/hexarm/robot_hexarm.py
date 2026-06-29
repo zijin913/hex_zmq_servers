@@ -13,6 +13,7 @@ import numpy as np
 from collections import deque
 
 from ..robot_base import HexRobotBase
+from ..mit_control import MitArmSafety
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
 from hex_robo_utils import (
@@ -122,10 +123,91 @@ class HexRobotHexarm(HexRobotBase):
         # behavior is unchanged unless a config opts in.
         self.__gravity_comp = bool(robot_config.get("gravity_comp", False))
         self.__grav_scale = float(robot_config.get("gravity_comp_scale", 1.0))
+
+        # Reference slew (anti-lunge) — IDENTICAL to the sim device so sim predicts
+        # real. Cap how far the commanded arm target may lead the MEASURED angle
+        # (rad); kp*(q_des-q) then stays inside the motor torque envelope, so a
+        # far / stale / aggressive setpoint becomes a smooth bounded-speed pursuit
+        # instead of saturating and lunging. Default 0.1 (the sim default) so the
+        # real arm is protected even without an explicit cfg; <=0 disables. Only
+        # binds on a far jump — dense policy/home/jog steps are well under it.
+        _mpe = robot_config.get("max_pos_err", 0.1)
+        self.__max_pos_err = float(_mpe) if _mpe and float(_mpe) > 0 else None
+
+        # Control mode: "position" | "joint_impedance" | "torque" | "cart_impedance".
+        # JOINT modes (position/joint_impedance/torque) are decided purely by the
+        # command column-count in __set_cmds, so the device needs no flag for them —
+        # soda_os shapes the 5-col MIT command. The flag exists so the device can
+        # switch INTO cart_impedance, where it must reinterpret the streamed payload
+        # as a Cartesian reference and run the task-space PD itself at the loop rate.
+        self.__control_mode = str(
+            robot_config.get("control_mode", "position")).lower()
+
+        # Device-side torque safety (applies to EVERY mode's torque feedforward,
+        # closest to the hardware). effort_limit clamps |tau| per arm joint; tau_slew
+        # caps the per-tick change (anti-step); cart_force_clamp bounds the Cartesian
+        # wrench. All opt-in — absent → no software clamp (legacy behaviour); the
+        # motor firmware still enforces its own hardware current limit underneath.
+        ts = robot_config.get("torque_safety", {}) or {}
+        self.__cart_f_clamp = float(ts.get("cart_force_clamp", 150.0))
+        # Rotational wrench ceiling (N·m): bounds ‖F[3:6]‖ (the orientation-error term
+        # that drives the WRIST via Jᵀ). Default finite (was unbounded) so an orientation
+        # error can't drive the wrist to the effort cap; lower for commissioning.
+        self.__cart_t_clamp = float(ts.get("cart_torque_clamp", 30.0))
+        # Small FIRMWARE-LOCAL joint damping for cart_impedance (kp stays 0). In cart the
+        # arm joints get kp=kd=0, so the ONLY damping is the software task-space D term,
+        # which on real feeds back the raw/quantized, transport-DELAYED joint velocity →
+        # the low-inertia wrist (J5/J6) breaks into a high-frequency limit cycle. A small
+        # kd in the MIT command closes the damping in the FIRMWARE at its own high rate
+        # with ~0 delay (guaranteed passive), killing the buzz without adding stiffness.
+        # Per-joint; tune UP the wrist entries only until the buzz stops. None/0 disables.
+        self.__cart_joint_kd = np.asarray(
+            ts.get("cart_joint_kd", [0.5, 0.5, 0.5, 0.3, 0.2, 0.2]), dtype=np.float64)
+        # One-pole low-pass on the joint velocity feeding the cart D term: high-frequency
+        # velocity-estimate NOISE through the (delayed) software D term keeps re-exciting
+        # the wrist limit cycle (the residual buzz firmware kd alone leaves). alpha∈[0,1):
+        # higher = smoother but more phase lag (too high re-destabilizes). 0.8 ≈ 18 Hz @500Hz.
+        self.__cart_dq_alpha = float(ts.get("cart_dq_filter_alpha", 0.8))
+        self.__cart_dq_filt = None
+        # SOFTWARE joint-space damping (the openarm-follower pattern): instead of a firmware
+        # kd on the RAW motor velocity (a noise amplifier on the light wrist) OR task-space
+        # Jᵀ·D·J (ill-conditioned at the wrist), subtract a per-joint B on the FILTERED,
+        # deadbanded velocity here in software. Pair with cart_joint_kd=0 and rot task-space
+        # D≈0 so this is the only damping. Robot-specific — tune; these are openarm starts.
+        self.__cart_joint_b = np.asarray(
+            ts.get("cart_joint_b", [4.0, 3.8, 2.6, 2.8, 0.3, 0.3]), dtype=np.float64)
+        # Velocity deadband (rad/s): zero the damping/D velocity below this so quantization
+        # NOISE at rest can't drive a damping torque (kills the at-rest buzz). 0 disables.
+        self.__cart_vel_deadband = float(ts.get("cart_vel_deadband", 0.02))
+        # rank 5: run the Cartesian impedance LAW at control_hz inside work_loop against the
+        # freshest measured q/dq, instead of only when a (slow, jittery) command arrives or the
+        # 30Hz idle-hold fires. At a low/delayed recompute rate the software damping term is NOT
+        # passive and injects energy (lunge); at control_hz it is. The streamed cart reference
+        # only updates this cached TARGET; the law runs at loop rate.
+        self.__last_cart_ref = None
+        self.__cart_control_period_ms = 1000.0 / max(1.0, float(control_hz))
+        # One-shot: on entering cart_impedance, force the FIRST cart tick's error to 0 so
+        # the device holds its OWN measured pose (independent of any skew in the soda-side
+        # bumpless reference); subsequent ticks track the streamed reference.
+        self.__cart_entry_seed = False
+        # Shared MIT-arm safety (gravity feedforward + effort/slew clamp). Built from
+        # the SAME config keys (incl. gravity_comp_scale_lowstiff) via from_config so
+        # the sim and real devices read everything identically — the sim is a faithful
+        # pre-flight test. (robot/mit_control.py)
+        self.__safety = MitArmSafety.from_config(robot_config)
+
+        # Latest measured arm state (cached by work_loop) — the Cartesian PD needs
+        # measured q/dq, which __set_cmds doesn't otherwise receive.
+        self.__last_q = None
+        self.__last_dq = None
+        self.__ee_frame_id = None
+
+        # Pinocchio model — needed for gravity feedforward AND/OR Cartesian impedance.
         self.__pin = None
         self.__grav_model = None
         self.__grav_data = None
-        if self.__gravity_comp:
+        need_pin = self.__gravity_comp or self.__control_mode == "cart_impedance"
+        if need_pin:
             try:
                 import pinocchio as pin
                 urdf = os.path.join(os.path.dirname(__file__),
@@ -134,11 +216,17 @@ class HexRobotHexarm(HexRobotBase):
                 self.__grav_model = pin.buildModelFromUrdf(urdf)
                 self.__grav_data = self.__grav_model.createData()
                 self.__grav_model.gravity.linear = np.array([0.0, 0.0, -9.81])
+                self.__ee_frame_id = self.__resolve_ee_frame()
                 hex_log(HEX_LOG_LEVEL["info"],
-                        f"[hexarm] gravity comp ON (scale={self.__grav_scale})")
+                        f"[hexarm] pinocchio ON (gravity_comp={self.__gravity_comp} "
+                        f"scale={self.__grav_scale}, control_mode={self.__control_mode})")
             except Exception as e:
-                print(f"\033[91m[hexarm] gravity comp init failed: {e}\033[0m")
+                print(f"\033[91m[hexarm] pinocchio init failed: {e}\033[0m")
                 self.__gravity_comp = False
+                if self.__control_mode == "cart_impedance":
+                    print("\033[91m[hexarm] cart_impedance needs pinocchio — "
+                          "falling back to position\033[0m")
+                    self.__control_mode = "position"
 
         # variables
         # hex_arm variables
@@ -231,12 +319,18 @@ class HexRobotHexarm(HexRobotBase):
         hold_pos = None        # latest measured pose (live)
         idle_target = None     # latched pose held while idle (fixed, not chased)
         last_send_ts = hex_ts_now()
+        last_cart_ts = hex_ts_now()   # rank 5: throttle the high-rate cart recompute to control_hz
         rate = HexRate(self.__work_loop_hz)
         while self._working.is_set() and not stop_event.is_set():
             # states
             ts, states = self.__get_states()
             if states is not None:
                 hold_pos = states[:, 0]
+                # Cache measured arm q/dq for the Cartesian-impedance PD (which runs
+                # inside __set_cmds and otherwise has no access to measured state).
+                arm_ids = self.__motor_idx["robot_arm"]
+                self.__last_q = states[arm_ids, 0]
+                self.__last_dq = states[arm_ids, 1]
                 if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
@@ -257,7 +351,11 @@ class HexRobotHexarm(HexRobotBase):
                     last_cmds = cmds
                     idle_target = None   # active stream: re-latch fresh on next idle
                     # 命令时间戳新鲜度校验已移除:始终下发(see fork history)
-                    self.__set_cmds(cmds)
+                    # Never let a malformed command kill the control loop / server.
+                    try:
+                        self.__set_cmds(cmds)
+                    except Exception as e:
+                        print(f"\033[91m[hexarm] set_cmds error: {e}\033[0m")
                     last_send_ts = hex_ts_now()
                     sent = True
 
@@ -281,7 +379,10 @@ class HexRobotHexarm(HexRobotBase):
                         idle_target = hold_pos.copy()   # latch once
                     hold = idle_target
                 if hold is not None:
-                    self.__set_cmds(hold)
+                    try:
+                        self.__set_cmds(hold)
+                    except Exception as e:
+                        print(f"\033[91m[hexarm] idle-hold set_cmds error: {e}\033[0m")
                     last_send_ts = hex_ts_now()
 
             # sleep
@@ -346,6 +447,12 @@ class HexRobotHexarm(HexRobotBase):
             print("\033[91mArm not found\033[0m")
             return False
 
+        # Cartesian impedance: the streamed payload is a task-space reference
+        # (pose + Cartesian K/D + grip), NOT joint targets — handle on its own path
+        # before the joint-length check below would mangle it.
+        if self.__control_mode == "cart_impedance" and self.__pin is not None:
+            return self.__set_cmds_cart(cmds)
+
         if cmds.shape[0] < self._dofs_sum:
             print(
                 "\033[91mThe length of joint_angles must be greater than or equal to the number of motors\033[0m"
@@ -380,20 +487,31 @@ class HexRobotHexarm(HexRobotBase):
             raise ValueError(f"The shape of cmds is invalid: {cmds.shape}")
 
         # arm
+        arm_cmd_pos = cmd_pos[self.__motor_idx["robot_arm"]]
+        # Reference slew (anti-lunge), IDENTICAL to the sim device: keep the
+        # commanded arm target within max_pos_err of the MEASURED angle so
+        # kp*(q_des-q) stays inside the motor torque envelope — a far/stale/
+        # aggressive setpoint pursues smoothly instead of saturating and lunging.
+        # Applied before the joint-limit clamp (matches the sim ordering).
+        if self.__max_pos_err is not None and self.__last_q is not None:
+            q_meas = np.asarray(self.__last_q, dtype=np.float64)
+            arm_cmd_pos = np.asarray(arm_cmd_pos, dtype=np.float64)
+            if q_meas.shape == arm_cmd_pos.shape:
+                arm_cmd_pos = q_meas + np.clip(arm_cmd_pos - q_meas,
+                                               -self.__max_pos_err,
+                                               self.__max_pos_err)
         arm_tar_pos = self._apply_pos_limits(
-            cmd_pos[self.__motor_idx["robot_arm"]],
+            arm_cmd_pos,
             self._limits[self.__motor_idx["robot_arm"], 0, 0],
             self._limits[self.__motor_idx["robot_arm"], 0, 1],
         )
-        arm_tor = cmd_tor[self.__motor_idx["robot_arm"]]
-        if self.__gravity_comp:
-            try:
-                tau_g = self.__pin.computeGeneralizedGravity(
-                    self.__grav_model, self.__grav_data,
-                    np.asarray(arm_tar_pos, dtype=np.float64))
-                arm_tor = arm_tor + self.__grav_scale * tau_g
-            except Exception as e:
-                print(f"\033[91m[hexarm] gravity comp failed: {e}\033[0m")
+        # Gravity feedforward (zero-stiffness-safe: measured pose + unity scale when
+        # kp≈0) + effort/slew clamp, via the SHARED MitArmSafety so the sim device
+        # does exactly the same thing. No-op for gravity unless gravity_comp is on.
+        arm_tor = self.__safety.apply(
+            cmd_tor[self.__motor_idx["robot_arm"]],
+            arm_tar_pos, self.__last_q,
+            cmd_kp[self.__motor_idx["robot_arm"]], self.__gravity_fn)
         arm_cmd = self.__arm.construct_mit_command(
             arm_tar_pos,
             tar_vel[self.__motor_idx["robot_arm"]],
@@ -430,6 +548,160 @@ class HexRobotHexarm(HexRobotBase):
                 # Hands device may raise if motor data not yet available
                 pass
 
+        return True
+
+    # ==================== control mode + safety + Cartesian impedance ==========
+
+    def set_control_mode(self, mode: str) -> bool:
+        """Runtime control-mode switch (one-shot ZMQ cmd). JOINT modes only change
+        how soda_os shapes the streamed command (the device path is the same);
+        cart_impedance makes the device run the task-space PD and needs pinocchio,
+        which is built at init only when configured — so it can't be entered at
+        runtime unless the device started with pinocchio available."""
+        mode = str(mode).lower()
+        if mode not in ("position", "joint_impedance", "torque", "cart_impedance"):
+            print(f"\033[91m[hexarm] unknown control_mode {mode!r}\033[0m")
+            return False
+        if mode == "cart_impedance" and self.__pin is None:
+            print("\033[91m[hexarm] cart_impedance needs pinocchio — start the server "
+                  "with control_mode/gravity_comp so it is built at init\033[0m")
+            return False
+        self.__control_mode = mode
+        self.__safety._last_tau.clear()  # reset slew history across a mode change
+        # ...EXCEPT seed the cart torque-slew baseline, or the FIRST cart tick bypasses
+        # the rate limiter: MitArmSafety.clamp only slews when a prior value exists, and
+        # cart uses an ISOLATED slew_key="cart" that the joint path (slew_key="default")
+        # never seeds. An empty bucket let the first cart tick dump the full Jᵀ·F+gravity
+        # torque in ONE 500Hz tick (bounded only by the per-joint effort cap, not by
+        # slew_Nm_per_tick) — a violent wrist lunge ("爆冲") on entry. Baseline it to the
+        # gravity the cart loop already applies so the first step is just the (≈0 at a
+        # bumpless entry) spring force and RAMPS from there. (Sim never lunged because it
+        # reuses one slew key across modes and doesn't clear — this restores that parity.)
+        if mode == "cart_impedance":
+            self.__cart_entry_seed = True  # first cart tick holds the device's own pose (err=0)
+            self.__cart_dq_filt = None     # re-seed the velocity low-pass on entry
+            self.__last_cart_ref = None    # wait for the fresh bumpless ref before the high-rate loop runs
+            try:
+                if self.__last_q is not None and self.__pin is not None:
+                    seed = min(self.__grav_scale, 1.0) * self.__gravity_fn(self.__last_q)
+                    self.__safety._last_tau["cart"] = np.asarray(seed, dtype=np.float64)
+                else:
+                    self.__safety._last_tau["cart"] = np.zeros(6)
+            except Exception as e:
+                print(f"\033[91m[hexarm] cart slew seed failed: {e}\033[0m")
+                self.__safety._last_tau["cart"] = np.zeros(6)
+        hex_log(HEX_LOG_LEVEL["info"], f"[hexarm] control_mode -> {mode}")
+        return True
+
+    def __resolve_ee_frame(self):
+        """Frame id for the Cartesian FK/Jacobian. Prefer the arm's last link
+        (link_6); fall back to the model's last frame."""
+        m = self.__grav_model
+        for name in ("link_6", "link6", "tool0", "ee_link", "gripper_base", "tcp"):
+            try:
+                if m.existFrame(name):
+                    return m.getFrameId(name)
+            except Exception:
+                pass
+        return m.nframes - 1
+
+    def __gravity_fn(self, q: np.ndarray) -> np.ndarray:
+        """Generalized gravity at q — the pinocchio closure handed to MitArmSafety."""
+        return self.__pin.computeGeneralizedGravity(
+            self.__grav_model, self.__grav_data, np.asarray(q, dtype=np.float64))
+
+    @staticmethod
+    def __quat_wxyz_to_mat(quat: np.ndarray) -> np.ndarray:
+        w, x, y, z = quat / (np.linalg.norm(quat) + 1e-12)
+        return np.array([
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ])
+
+    def __set_cmds_cart(self, cmds: np.ndarray) -> bool:
+        """Cartesian impedance for ONE arm. Streamed payload (length >= 20):
+            [px,py,pz, qw,qx,qy,qz, Kx,Ky,Kz,Krx,Kry,Krz, Dx,Dy,Dz,Drx,Dry,Drz, grip]
+        tau = Jᵀ(K·Δx + D·(−ẋ)) + gravity, sent as an MIT command with kp=kd=0 so the
+        computed torque is the only thing driving the arm. Orientation error uses the
+        SO(3) log-map. Jacobian is LOCAL_WORLD_ALIGNED (EE point, base-aligned axes),
+        matching the cart_vel adapter.
+
+        ⚠️ UNVALIDATED on hardware — validate in sim, then on a real arm under e-stop
+        with low K, before trusting it.
+        """
+        if self.__last_q is None or self.__pin is None:
+            return False
+        ref = np.asarray(cmds, dtype=np.float64).reshape(-1)
+        if ref.shape[0] < 20:
+            print(f"\033[91m[hexarm] cart cmd needs >=20 values, got {ref.shape[0]}\033[0m")
+            return False
+        pos_des, quat_des, K, D, grip = ref[0:3], ref[3:7], ref[7:13], ref[13:19], ref[19]
+        q = np.asarray(self.__last_q, dtype=np.float64)
+        dq = (np.asarray(self.__last_dq, dtype=np.float64)
+              if self.__last_dq is not None else np.zeros_like(q))
+        pin, m, d, fid = self.__pin, self.__grav_model, self.__grav_data, self.__ee_frame_id
+        try:
+            pin.forwardKinematics(m, d, q)
+            pin.updateFramePlacements(m, d)
+            x_cur = np.asarray(d.oMf[fid].translation)
+            R_cur = np.asarray(d.oMf[fid].rotation)
+            J = np.asarray(pin.computeFrameJacobian(
+                m, d, q, fid, pin.LOCAL_WORLD_ALIGNED))[:, :q.shape[0]]  # 6 x n
+            R_des = self.__quat_wxyz_to_mat(quat_des)
+            if self.__cart_entry_seed:
+                # First tick after entering cart: hold THIS pose exactly (err=0), so any
+                # skew between the soda-side bumpless reference and the device's measured
+                # pose can't produce an entry wrench. Subsequent ticks track the stream.
+                err = np.zeros(6)
+                self.__cart_entry_seed = False
+            else:
+                err = np.concatenate([pos_des - x_cur, pin.log3(R_des @ R_cur.T)])  # 6
+            # Low-pass the joint velocity feeding the (delayed, noisy) software D term so
+            # velocity-estimate noise can't sustain the wrist limit cycle; the firmware kd
+            # dissipates, this stops the re-excitation.
+            a = self.__cart_dq_alpha
+            if self.__cart_dq_filt is None or self.__cart_dq_filt.shape != dq.shape:
+                self.__cart_dq_filt = dq.copy()
+            else:
+                self.__cart_dq_filt = a * self.__cart_dq_filt + (1.0 - a) * dq
+            # Deadband the filtered velocity so at-rest quantization noise drives no damping.
+            vf = self.__cart_dq_filt.copy()
+            vf[np.abs(vf) < self.__cart_vel_deadband] = 0.0
+            xdot = J @ vf                                                        # 6
+            F = K * err - D * xdot                                               # diag K/D
+            fmag = np.linalg.norm(F[:3])
+            if fmag > self.__cart_f_clamp:
+                F[:3] *= self.__cart_f_clamp / fmag
+            # Rotational wrench clamp: bound the orientation-error term that drives the
+            # wrist via Jᵀ, so a spurious/large orientation error can't spike the wrist.
+            tmag = np.linalg.norm(F[3:6])
+            if tmag > self.__cart_t_clamp:
+                F[3:6] *= self.__cart_t_clamp / tmag
+            # gravity (always, at measured q, scale<=1.0 since kp=0) + shared clamp.
+            grav = min(self.__grav_scale, 1.0) * pin.computeGeneralizedGravity(m, d, q)
+            # Damping = SOFTWARE joint-space B on the filtered/deadbanded velocity (NOT a
+            # firmware kd on raw velocity, NOT task-space Jᵀ D J on the light wrist) — the
+            # openarm-follower pattern that keeps the wrist quiet.
+            arm_tor = self.__safety.clamp(
+                J.T @ F + grav - self.__cart_joint_b[:q.shape[0]] * vf, slew_key="cart")
+        except Exception as e:
+            print(f"\033[91m[hexarm] cart impedance failed: {e}\033[0m")
+            return False
+        zeros = np.zeros(q.shape[0])
+        kd_cart = self.__cart_joint_kd[:q.shape[0]]  # firmware-local damping (kp stays 0)
+        self.__arm.motor_command(
+            CommandType.MIT,
+            self.__arm.construct_mit_command(q, zeros, arm_tor, zeros, kd_cart))
+        if self.__gripper is not None:
+            try:
+                g_idx = self.__motor_idx["robot_gripper"]
+                if self.__gripper_default_torque != self.__gripper_gate:
+                    self.__gripper.set_pos_torque(self.__gripper_default_torque)
+                    self.__gripper_gate = self.__gripper_default_torque
+                self.__gripper.motor_command(CommandType.POSITION, [float(grip)] * len(g_idx))
+            except (ValueError, Exception):
+                pass
         return True
 
     def close(self):

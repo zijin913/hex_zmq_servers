@@ -25,9 +25,6 @@ NET_CONFIG = {
     "server_num_workers": 4,
 }
 
-TAU = 2 * np.pi
-
-
 class HexMujocoBase(HexDeviceBase):
 
     def __init__(self, realtime_mode: bool = False):
@@ -54,37 +51,9 @@ class HexMujocoBase(HexDeviceBase):
         self._wait_for_working()
         return self._intri
 
-    @staticmethod
-    def _rads_normalize(rads: np.ndarray) -> np.ndarray:
-        return (rads + np.pi) % TAU - np.pi
-
-    @staticmethod
-    def _apply_pos_limits(
-        rads: np.ndarray,
-        lower_bound: np.ndarray,
-        upper_bound: np.ndarray,
-    ) -> np.ndarray:
-        normed_rads = HexMujocoBase._rads_normalize(rads)
-        outside = (normed_rads < lower_bound) | (normed_rads > upper_bound)
-        if not np.any(outside):
-            return normed_rads
-
-        lower_dist = np.fabs(
-            HexMujocoBase._rads_normalize(
-                (normed_rads - lower_bound)[outside]))
-        upper_dist = np.fabs(
-            HexMujocoBase._rads_normalize(
-                (normed_rads - upper_bound)[outside]))
-        choose_lower = lower_dist < upper_dist
-        choose_upper = ~choose_lower
-
-        outside_full = np.flatnonzero(outside)
-        outside_lower = outside_full[choose_lower]
-        outside_upper = outside_full[choose_upper]
-        normed_rads[outside_lower] = lower_bound[outside_lower]
-        normed_rads[outside_upper] = upper_bound[outside_upper]
-
-        return normed_rads
+    # _rads_normalize / _apply_pos_limits now live in HexDeviceBase — single shared
+    # source of truth so the sim (this) and real devices clamp joint targets
+    # IDENTICALLY (range-center wrap + clip; flip-free).
 
     @abstractmethod
     def work_loop(self, hex_queues: list[deque | threading.Event]):

@@ -144,6 +144,11 @@ class HexMujocoFireflyY6DualClient(HexMujocoClientBase):
     ):
         self._cmds_queue[robot_name].append(cmds)
 
+    def set_control_mode(self, mode: str) -> bool:
+        """One-shot control-mode switch (shared by both arms in this dual device)."""
+        hdr, _ = self.request({"cmd": "set_control_mode", "args": mode})
+        return isinstance(hdr, dict) and hdr.get("cmd") == "set_control_mode_ok"
+
     def _process_frame(
         self,
         camera_name: str | None = None,

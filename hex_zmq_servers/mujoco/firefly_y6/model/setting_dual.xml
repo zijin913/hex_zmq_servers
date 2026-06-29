@@ -37,23 +37,28 @@
         <joint joint1="right_gripper_left_joint_1" joint2="right_gripper_right_joint_1" polycoef="0 -1 0 0 0"/>
     </equality>
 
+    <!-- Joint torque caps = the real HEXFELLOW actuator PEAK torque (datasheet):
+         J1-J4 = HEX 4342P (motor 0x85, gear 42): rated 9, peak 30, max 57.5 N·m -> use peak 30.
+         J5-J6 = HEX 4310  (motor 0x84, gear 10): rated 3, peak 7 N·m            -> use peak 7.
+         Gripper kept at 10 (GR100 servo gate is 3 N·m motor-side; claw-joint mapping TBD).
+         Keep these in sync with config json torque_safety.effort_limit_Nm and the real arm cfg. -->
     <actuator>
         <!-- left arm -->
-        <motor joint="left_joint_1" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="left_joint_2" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="left_joint_3" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="left_joint_4" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="left_joint_5" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="left_joint_6" ctrlrange="-10 10" forcerange="-10 10"/>
+        <motor joint="left_joint_1" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="left_joint_2" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="left_joint_3" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="left_joint_4" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="left_joint_5" ctrlrange="-7 7" forcerange="-7 7"/>
+        <motor joint="left_joint_6" ctrlrange="-7 7" forcerange="-7 7"/>
         <motor joint="left_gripper_left_joint_1" ctrlrange="-10 10" forcerange="-10 10"/>
 
         <!-- right arm -->
-        <motor joint="right_joint_1" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="right_joint_2" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="right_joint_3" ctrlrange="-28 28" forcerange="-28 28"/>
-        <motor joint="right_joint_4" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="right_joint_5" ctrlrange="-10 10" forcerange="-10 10"/>
-        <motor joint="right_joint_6" ctrlrange="-10 10" forcerange="-10 10"/>
+        <motor joint="right_joint_1" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="right_joint_2" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="right_joint_3" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="right_joint_4" ctrlrange="-30 30" forcerange="-30 30"/>
+        <motor joint="right_joint_5" ctrlrange="-7 7" forcerange="-7 7"/>
+        <motor joint="right_joint_6" ctrlrange="-7 7" forcerange="-7 7"/>
         <motor joint="right_gripper_left_joint_1" ctrlrange="-10 10" forcerange="-10 10"/>
     </actuator>
 

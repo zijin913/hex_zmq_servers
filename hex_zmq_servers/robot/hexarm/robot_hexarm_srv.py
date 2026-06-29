@@ -70,6 +70,9 @@ class HexRobotHexarmServer(HexRobotServerBase):
             return self._get_states(recv_hdr)
         elif recv_hdr["cmd"] == "set_cmds":
             return self._set_cmds(recv_hdr, recv_buf)
+        elif recv_hdr["cmd"] == "set_control_mode":
+            ok = self._device.set_control_mode(recv_hdr.get("args"))
+            return self.no_ts_hdr(recv_hdr, ok), None
         else:
             raise ValueError(f"unknown command: {recv_hdr['cmd']}")
 

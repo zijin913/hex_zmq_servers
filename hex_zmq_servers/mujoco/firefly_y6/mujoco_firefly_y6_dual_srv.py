@@ -58,8 +58,13 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
         self._states_left_queue = deque(maxlen=self._deque_maxlen)
         self._states_right_queue = deque(maxlen=self._deque_maxlen)
         self._states_obj_queue = deque(maxlen=self._deque_maxlen)
-        self._cmds_left_queue = deque(maxlen=self._deque_maxlen)
-        self._cmds_right_queue = deque(maxlen=self._deque_maxlen)
+        # Command queues are LATEST-ONLY (maxlen=1), matching the real device
+        # (HexRobotServerBase). With maxlen>1 + FIFO popleft, a burst of jog targets
+        # buffers and the device replays them oldest-first when it falls behind —
+        # the "move to next pose, then jump back / oscillate between poses" bug.
+        # Always acting on the freshest target is correct for control.
+        self._cmds_left_queue = deque(maxlen=1)
+        self._cmds_right_queue = deque(maxlen=1)
         self._rgb_left_queue = deque(maxlen=self._deque_maxlen)
         self._depth_left_queue = deque(maxlen=self._deque_maxlen)
         self._rgb_right_queue = deque(maxlen=self._deque_maxlen)
@@ -228,6 +233,9 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
             return self.no_ts_hdr(recv_hdr, self._seq_clear()), None
         elif cmd == "reset":
             return self.no_ts_hdr(recv_hdr, self._device.reset()), None
+        elif cmd == "set_control_mode":
+            ok = self._device.set_control_mode(recv_hdr.get("args"))
+            return self.no_ts_hdr(recv_hdr, ok), None
         elif cmd == "get_dofs":
             dofs = self._device.get_dofs()
             return self.no_ts_hdr(recv_hdr, dofs is not None), dofs

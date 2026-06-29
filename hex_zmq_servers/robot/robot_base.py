@@ -29,9 +29,6 @@ NET_CONFIG = {
     "server_num_workers": 4,
 }
 
-TAU = 2 * np.pi
-
-
 class HexRobotBase(HexDeviceBase):
 
     def __init__(self, realtime_mode: bool = False):
@@ -54,35 +51,12 @@ class HexRobotBase(HexDeviceBase):
         self._wait_for_working()
         return self._limits
 
-    @staticmethod
-    def _rads_normalize(rads: np.ndarray) -> np.ndarray:
-        return (rads + np.pi) % TAU - np.pi
-
-    @staticmethod
-    def _apply_pos_limits(
-        rads: np.ndarray,
-        lower_bound: np.ndarray,
-        upper_bound: np.ndarray,
-    ) -> np.ndarray:
-        normed_rads = HexRobotBase._rads_normalize(rads)
-        outside = (normed_rads < lower_bound) | (normed_rads > upper_bound)
-        if not np.any(outside):
-            return normed_rads
-
-        lower_dist = np.fabs(
-            HexRobotBase._rads_normalize((normed_rads - lower_bound)[outside]))
-        upper_dist = np.fabs(
-            HexRobotBase._rads_normalize((normed_rads - upper_bound)[outside]))
-        choose_lower = lower_dist < upper_dist
-        choose_upper = ~choose_lower
-
-        outside_full = np.flatnonzero(outside)
-        outside_lower = outside_full[choose_lower]
-        outside_upper = outside_full[choose_upper]
-        normed_rads[outside_lower] = lower_bound[outside_lower]
-        normed_rads[outside_upper] = upper_bound[outside_upper]
-
-        return normed_rads
+    # _rads_normalize / _apply_pos_limits now live in HexDeviceBase — single shared
+    # source of truth so the real (this) and sim devices clamp joint targets
+    # IDENTICALLY. (The old version here wrapped to [-pi,pi) then snapped to the
+    # nearest bound, which flipped a near-+pi target on joints like joint_3=[0,3.14]
+    # to the opposite bound — a max-torque shove. The shared version wraps about the
+    # range center, which is monotone and flip-free.)
 
     @abstractmethod
     def work_loop(self, hex_queues: list[deque | threading.Event]):
@@ -138,6 +112,12 @@ class HexRobotClientBase(HexZMQClientBase):
 
     def set_cmds(self, cmds: np.ndarray):
         self._cmds_queue.append(cmds)
+
+    def set_control_mode(self, mode: str) -> bool:
+        """One-shot control-mode switch (position | joint_impedance | torque |
+        cart_impedance). Not part of the streamed command path — a direct REQ/REP."""
+        hdr, _ = self.request({"cmd": "set_control_mode", "args": mode})
+        return isinstance(hdr, dict) and hdr.get("cmd") == "set_control_mode_ok"
 
     def _get_states_inner(self):
         hdr, states = self.request({
