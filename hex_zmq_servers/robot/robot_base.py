@@ -114,8 +114,8 @@ class HexRobotClientBase(HexZMQClientBase):
         self._cmds_queue.append(cmds)
 
     def set_control_mode(self, mode: str) -> bool:
-        """One-shot control-mode switch (position | joint_impedance | torque |
-        cart_impedance). Not part of the streamed command path — a direct REQ/REP."""
+        """One-shot control-mode switch (position | joint_impedance | torque).
+        Not part of the streamed command path — a direct REQ/REP."""
         hdr, _ = self.request({"cmd": "set_control_mode", "args": mode})
         return isinstance(hdr, dict) and hdr.get("cmd") == "set_control_mode_ok"
 

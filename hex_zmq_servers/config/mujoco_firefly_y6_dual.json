@@ -37,7 +37,7 @@
         "_comment_gravity_comp": "Mirror the real arm cfg so torque/impedance behave identically in sim (faithful pre-flight test). gravity_comp adds tau_g(q) from the gr100 URDF via the shared MitArmSafety; scale 1.0 = accurate (do NOT use >1 — unsafe at zero stiffness).",
         "gravity_comp": true,
         "gravity_comp_scale": 0.8,
-        "_comment_lowstiff": "Match the real arm cfg (site.yaml) so ZERO-stiffness modes (torque, cart_impedance, kp~0 joint_impedance) behave the same: at kp<=1e-3 the arm is held only by the gravity feedforward, and real under-compensates at 0.6 so it SAGS rather than holds. Without this the sim defaulted to 1.0 and floated level — making the sim look safer/different from real in exactly the compliant modes being pre-flighted.",
+        "_comment_lowstiff": "Match the real arm cfg (site.yaml) so ZERO-stiffness modes (torque, kp~0 joint_impedance) behave the same: at kp<=1e-3 the arm is held only by the gravity feedforward, and real under-compensates at 0.6 so it SAGS rather than holds. Without this the sim defaulted to 1.0 and floated level — making the sim look safer/different from real in exactly the compliant modes being pre-flighted.",
         "gravity_comp_scale_lowstiff": 0.6,
         "_comment_joint_dyn": "SIM-PLANT fidelity ESTIMATES (config-driven; override the MJCF after load). armature = reflected rotor inertia = J_rotor*gear^2 with J_rotor~2e-5 kg·m2 (57mm BLDC estimate) and gear 42 (J1-J4) / 10 (J5-J6) -> 0.035 / 0.002. frictionloss (Coulomb) + damping (viscous) are ~few-percent-of-rated estimates; J4 is grouped with J1-J3 (same HEX 4342P motor). NOT verified vs hardware. Replace with CAD/HEXFELLOW rotor inertia + measured friction when available; impedance gains should be re-tuned on hardware regardless.",
         "arm_armature": [0.035, 0.035, 0.035, 0.035, 0.002, 0.002],
@@ -47,15 +47,10 @@
         "max_pos_err": 0.15,
         "_comment_effort": "REAL HEXFELLOW actuator PEAK torque (datasheets hex-4342/hex-4310): J1-J4 = HEX 4342P (0x85, gear 42) peak 30 N·m; J5-J6 = HEX 4310 (0x84, gear 10) peak 7 N·m; gripper 10 (GR100 servo 3 N·m gate is motor-side, claw mapping TBD). Keep in sync with setting_dual.xml forcerange and the real arm cfg torque_safety.",
         "_comment_slew": "slew_Nm_per_tick = torque-rate limit (anti-lunge for torque/cart, where kp=0 makes max_pos_err a no-op). Sim is 1 kHz vs real 500 Hz, so 1.0/tick here == 1000 N·m/s == the real cfg's 2.0/tick @500Hz (same ramp rate, parity-correct).",
-        "_comment_commissioning": "COMMISSIONING SAFETY PROFILE (temporary, mirrors site.yaml so the sim dry-run predicts the conservative real arm). Restore: effort [30,30,30,30,7,7,10], slew 1.0, max_pos_err 0.1, gravity_comp_scale 1.0, drop cart_force_clamp. slew 0.25/tick@1kHz == real 0.5/tick@500Hz (250 N·m/s, rate parity). cart_force_clamp 25N == site.yaml.",
+        "_comment_commissioning": "COMMISSIONING SAFETY PROFILE (temporary, mirrors site.yaml so the sim dry-run predicts the conservative real arm). Restore: effort [30,30,30,30,7,7,10], slew 1.0, max_pos_err 0.1, gravity_comp_scale 1.0. slew 0.25/tick@1kHz == real 0.5/tick@500Hz (250 N·m/s, rate parity).",
         "torque_safety": {
             "effort_limit_Nm": [15.0, 15.0, 15.0, 15.0, 4.0, 4.0, 5.0],
-            "slew_Nm_per_tick": 0.25,
-            "cart_force_clamp": 25.0,
-            "cart_torque_clamp": 3.0,
-            "cart_joint_kd": [0.5, 0.5, 0.5, 0.3, 0.4, 0.4],
-            "cart_joint_b": [0, 0, 0, 0, 0, 0],
-            "cart_vel_deadband": 0.02
+            "slew_Nm_per_tick": 0.25
         }
     }
 }
