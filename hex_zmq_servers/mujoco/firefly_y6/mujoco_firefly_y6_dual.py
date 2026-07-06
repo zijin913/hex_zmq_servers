@@ -144,6 +144,31 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
         # MuJoCo itself in sim (see __mj_gravity), because the plant here is MuJoCo and
         # the gr100 URDF model doesn't match its MJCF inertia.
         self.__safety = MitArmSafety.from_config(mujoco_config)
+
+        # Optional high-rate PUB broadcaster (Plane-2). Sim serves BOTH arms in one
+        # process, so a single publisher carries left.* and right.* topics. Sim
+        # DEFAULTS it ON (port 12360) so the Plane-2 demo works out of the box; real
+        # arms are opt-in via site.yaml arms.<side>.pub_port. Set pub_port 0 to disable.
+        self.__state_pub = None
+        _pub_port = mujoco_config.get("pub_port", 12360)
+        if _pub_port:
+            try:
+                from ...robot.state_pub import StatePublisher
+                self.__state_pub = StatePublisher(int(_pub_port))
+                print(f"[mujoco] state PUB on :{int(_pub_port)} (left+right)")
+            except Exception as e:
+                print(f"[mujoco] state PUB disabled: {e}")
+        # EE pose topic (<side>.ee): SAME gr100.urdf FK as the real device (NOT the
+        # MJCF world pose) -> identical conventions: link_6 in the arm's own base
+        # frame, quaternion xyzw.
+        self.__ee_fk = None
+        if self.__state_pub is not None:
+            try:
+                from ...robot.ee_fk import EEPoseFK
+                self.__ee_fk = EEPoseFK()
+            except Exception as e:
+                print(f"[mujoco] ee topic disabled: {e}")
+        self.__cam_info_tick = {}
         # GR100 lobster claw: client commands and URDF/MJCF range are now both [0, 0.69]
         # (measured upper limit). Keep ratio=1.0 — no scaling. If you ever want to
         # advertise a smaller range than URDF allows, set ratio = (advertised / urdf_max).
@@ -248,6 +273,32 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
             self.__viewer.sync()
         return True
 
+    def __pub_cam_jpg(self, name, ts, img):
+        """cam.<name>.jpg JPEG topic + throttled cam.<name>.info (≈ ROS
+        image_transport/compressed + camera_info). Non-blocking; failures drop."""
+        if self.__state_pub is None or img is None:
+            return
+        if not self.__state_pub.jpeg_wanted(name):
+            return   # nobody subscribed to cam.<name>.jpg -> skip the expensive encode
+        try:
+            import cv2
+            ok, buf = cv2.imencode(".jpg", img)
+            if not ok:
+                return
+            dts = (float(ts.get("s", 0)) + float(ts.get("ns", 0)) * 1e-9
+                   if isinstance(ts, dict) else float(ts))
+            self.__state_pub.publish_jpeg(name, dts, buf.tobytes())
+            n = self.__cam_info_tick.get(name, 0)
+            self.__cam_info_tick[name] = n + 1
+            if n % 30 == 0:
+                h, w = img.shape[:2]
+                self.__state_pub.publish_json(
+                    f"cam.{name}.info", dts,
+                    {"width": int(w), "height": int(h),
+                     "format": "jpeg/bgr8", "frame": name})
+        except Exception:
+            pass
+
     def work_loop(self, hex_queues: list[deque | threading.Event]):
         states_left_queue = hex_queues[0]
         states_right_queue = hex_queues[1]
@@ -317,6 +368,37 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                             (ts, states_right_count, states_right))
                         states_right_count = (states_right_count +
                                               1) % self._max_seq_num
+                        # High-rate PUB broadcast of both arms (non-blocking).
+                        if self.__state_pub is not None:
+                            _dts = (float(ts.get("s", 0)) + float(ts.get("ns", 0)) * 1e-9
+                                    if isinstance(ts, dict) else float(ts))
+                            # tau_ext ESTIMATE = measured effort − live qfrc_bias
+                            # (gravity+Coriolis) at the arm joints; free per mj_step.
+                            # Mirrors the real device so sim predicts real.
+                            def _tau_ext(st, idx):
+                                try:
+                                    t = st[:, 2].astype(np.float64).copy()
+                                    t[:6] -= self.__mj_gravity(st[:6, 0], idx)
+                                    return t
+                                except Exception:
+                                    return None
+                            def _ee(st):
+                                if self.__ee_fk is None:
+                                    return None
+                                try:
+                                    return self.__ee_fk.compute(st[:6, 0])
+                                except Exception:
+                                    return None
+                            self.__state_pub.publish(
+                                "left", _dts, states_left[:, 0],
+                                states_left[:, 1], states_left[:, 2],
+                                tau_ext=_tau_ext(states_left, self.__state_left_idx),
+                                ee=_ee(states_left))
+                            self.__state_pub.publish(
+                                "right", _dts, states_right[:, 0],
+                                states_right[:, 1], states_right[:, 2],
+                                tau_ext=_tau_ext(states_right, self.__state_right_idx),
+                                ee=_ee(states_right))
                         states_obj_queue.append(
                             (ts, states_obj_count, states_obj))
                         states_obj_count = (states_obj_count +
@@ -373,6 +455,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                         left_rgb_queue.append((ts, left_rgb_count, rgb_img))
                         left_rgb_count = (left_rgb_count +
                                           1) % self._max_seq_num
+                        self.__pub_cam_jpg("left_wrist", ts, rgb_img)
                 if self.__left_depth:
                     ts, depth_img = self.__get_depth("left_end_camera")
                     if depth_img is not None:
@@ -388,6 +471,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                         right_rgb_queue.append((ts, right_rgb_count, rgb_img))
                         right_rgb_count = (right_rgb_count +
                                            1) % self._max_seq_num
+                        self.__pub_cam_jpg("right_wrist", ts, rgb_img)
                 if self.__right_depth:
                     ts, depth_img = self.__get_depth("right_end_camera")
                     if depth_img is not None:
@@ -407,6 +491,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                             (ts, side_rgb_count, side_rgb_img))
                         side_rgb_count = (side_rgb_count +
                                           1) % self._max_seq_num
+                        self.__pub_cam_jpg("side", ts, side_rgb_img)
                 if (self.__left_depth
                         or self.__right_depth) and self.__side_depth_cam:
                     ts, side_depth_img = self.__get_depth("side_camera")
@@ -565,6 +650,8 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
         if not self._working.is_set():
             return
         self._working.clear()
+        if self.__state_pub is not None:
+            self.__state_pub.close()
         if self.__rgb_cam is not None:
             self.__rgb_cam.close()
         if self.__depth_cam is not None:

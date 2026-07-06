@@ -13,7 +13,7 @@ import numpy as np
 from collections import deque
 
 from ..robot_base import HexRobotBase
-from ..mit_control import MitArmSafety
+from ..mit_control import MitArmSafety, idle_gone_stale, build_safe_hold_cmd
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
 
 from hex_robo_utils import (
@@ -105,6 +105,47 @@ class HexRobotHexarm(HexRobotBase):
         self.__idle_hold = bool(robot_config.get("idle_hold", False))
         self.__idle_hold_period_ms = 1000.0 / float(
             robot_config.get("idle_hold_hz", 200.0))
+
+        # Client-death safe-stop. After this many ms with no FRESH client command,
+        # stop re-sending the last command (which would pin the arm rigid at its
+        # last kp — up to ~200 — against whatever it was touching) and instead
+        # stream a gravity-compensated COMPLIANT hold of the measured pose (soft
+        # float; gripper stays clamped so a grasped payload is not dropped). Must
+        # exceed the longest legitimate command gap (teleop clutch / policy pause /
+        # inter-chunk). None/<=0 keeps the legacy hold-last-forever behavior.
+        _ihm = robot_config.get("idle_hold_max_ms", 2000.0)
+        self.__idle_hold_max_ms = (float(_ihm) if _ihm is not None
+                                   and float(_ihm) > 0 else None)
+        self.__idle_safe_kp_scale = float(
+            robot_config.get("idle_safe_kp_scale", 0.15))
+        self.__idle_safe_kd_scale = float(
+            robot_config.get("idle_safe_kd_scale", 0.5))
+        self.__idle_safe_active = False   # engaged-safe-hold flag (log once)
+
+        # High-rate state broadcaster (zmq.PUB, optional). When pub_port is set,
+        # publish per-parameter topics "<side>.{pos,vel,eff,state}" on every fresh
+        # tick for clients that want push-based, selectively-subscribable feedback at
+        # the device loop rate (alongside the REQ/REP get_states path). NON-BLOCKING:
+        # a slow/absent subscriber drops frames and never stalls this control loop.
+        self.__pub_side = str(robot_config.get("side", "arm"))
+        self.__state_pub = None
+        self.__ee_fk = None
+        _pub_port = robot_config.get("pub_port")
+        if _pub_port:
+            try:
+                from ..state_pub import StatePublisher
+                self.__state_pub = StatePublisher(int(_pub_port))
+                print(f"\033[36m[hexarm] state PUB on :{int(_pub_port)} "
+                      f"(side={self.__pub_side})\033[0m")
+            except Exception as e:
+                print(f"\033[33m[hexarm] state PUB disabled: {e}\033[0m")
+            # EE pose topic (<side>.ee): link_6 in the arm base frame, quat xyzw.
+            # Same gr100.urdf-based FK as the sim device -> identical conventions.
+            try:
+                from ..ee_fk import EEPoseFK
+                self.__ee_fk = EEPoseFK()
+            except Exception as e:
+                print(f"\033[33m[hexarm] ee topic disabled: {e}\033[0m")
 
         # work_loop spin rate. Default 2000Hz oversamples 4x — arm state only
         # updates at the report rate (~control_hz). That wasted spinning is a
@@ -246,6 +287,16 @@ class HexRobotHexarm(HexRobotBase):
             self.__mit_kp = self.__mit_kp[:self._dofs_sum]
             self.__mit_kd = self.__mit_kd[:self._dofs_sum]
 
+        # Precompute the compliant safe-hold gains used on client death: arm joints
+        # get a fraction of the MIT gains (soft float that resists sag; 0 = pure
+        # zero-gravity float), the gripper keeps its full kp so it stays clamped.
+        _arm_idx = self.__motor_idx["robot_arm"]
+        self.__idle_safe_kp = self.__mit_kp[_arm_idx] * self.__idle_safe_kp_scale
+        self.__idle_safe_kd = self.__mit_kd[_arm_idx] * self.__idle_safe_kd_scale
+        _g = self.__motor_idx.get("robot_gripper")
+        self.__idle_safe_grip_kp = float(self.__mit_kp[_g[0]]) if _g else 0.0
+        self.__idle_safe_grip_kd = float(self.__mit_kd[_g[0]]) if _g else 0.0
+
         # start work loop
         self._working.set()
 
@@ -261,6 +312,7 @@ class HexRobotHexarm(HexRobotBase):
         hold_pos = None        # latest measured pose (live)
         idle_target = None     # latched pose held while idle (fixed, not chased)
         last_send_ts = hex_ts_now()
+        last_real_cmd_ts = hex_ts_now()  # last FRESH client command (safe-stop timer)
         rate = HexRate(self.__work_loop_hz)
         while self._working.is_set() and not stop_event.is_set():
             # states
@@ -275,6 +327,28 @@ class HexRobotHexarm(HexRobotBase):
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
+                    # High-rate PUB broadcast of this fresh frame (non-blocking).
+                    if self.__state_pub is not None:
+                        # External-torque ESTIMATE: measured effort minus modeled
+                        # gravity at the measured pose (arm joints only; gripper stays
+                        # raw effort). Estimate from motor currents + rigid-body model
+                        # — NOT an F/T sensor. None when pinocchio is unavailable.
+                        tau_ext = None
+                        if self.__pin is not None:
+                            try:
+                                tau_ext = states[:, 2].astype(np.float64).copy()
+                                tau_ext[arm_ids] -= self.__gravity_fn(states[arm_ids, 0])
+                            except Exception:
+                                tau_ext = None
+                        ee = None
+                        if self.__ee_fk is not None:
+                            try:
+                                ee = self.__ee_fk.compute(states[arm_ids, 0])
+                            except Exception:
+                                ee = None
+                        self.__state_pub.publish(self.__pub_side, ts,
+                                                 states[:, 0], states[:, 1], states[:, 2],
+                                                 tau_ext=tau_ext, ee=ee)
 
             # cmds
             cmds_pack = None
@@ -290,6 +364,11 @@ class HexRobotHexarm(HexRobotBase):
                     last_cmds_seq = seq
                     last_cmds = cmds
                     idle_target = None   # active stream: re-latch fresh on next idle
+                    last_real_cmd_ts = hex_ts_now()  # client alive: reset safe-stop timer
+                    if self.__idle_safe_active:      # leaving safe-hold on a fresh cmd
+                        self.__idle_safe_active = False
+                        hex_log(HEX_LOG_LEVEL["info"],
+                                "[hexarm] client command resumed -> exit safe-hold")
                     # 命令时间戳新鲜度校验已移除:始终下发(see fork history)
                     # Never let a malformed command kill the control loop / server.
                     try:
@@ -302,17 +381,35 @@ class HexRobotHexarm(HexRobotBase):
             # idle-hold keep-alive — feed the firmware's API watchdog when the
             # client command stream has a gap, so the arm holds position instead
             # of parking (PscApiCommunicationTimeout) and churning the SDK into a
-            # native crash. Throttled to idle_hold_hz. Re-send the last real
-            # command if there was one; otherwise hold a *latched* pose captured
-            # once when the arm went idle. NOTE: never feed the live measured
-            # pose here — __set_cmds issues an MIT/impedance command with no
-            # gravity feedforward, so target==measured every tick means ~zero
-            # restoring torque and the arm droops under gravity, chasing its own
-            # sag downward. A fixed target builds real kp*(target-measured)
-            # torque and holds.
+            # native crash. Throttled to idle_hold_hz.
+            #
+            # Short gap (< idle_hold_max_ms): re-send the last real command if
+            # there was one; otherwise hold a *latched* pose captured once when
+            # the arm went idle. (A fixed target builds real kp*(target-measured)
+            # torque and holds; feeding the LIVE measured pose with no gravity FF
+            # would droop — but see the safe-hold below, which carries gravity FF.)
+            #
+            # Stale (>= idle_hold_max_ms, i.e. the client is presumed DEAD): drop
+            # to a gravity-compensated COMPLIANT hold of the measured pose instead
+            # of pinning the arm rigid at its last kp forever — safe-stop on client
+            # death. The gripper stays clamped so a grasped payload is not dropped.
             if self.__idle_hold and not sent and hex_ts_delta_ms(
                     hex_ts_now(), last_send_ts) >= self.__idle_hold_period_ms:
-                if last_cmds is not None:
+                if idle_gone_stale(
+                        hex_ts_delta_ms(hex_ts_now(), last_real_cmd_ts),
+                        self.__idle_hold_max_ms) and hold_pos is not None:
+                    hold = build_safe_hold_cmd(
+                        hold_pos,
+                        self.__motor_idx["robot_arm"],
+                        self.__motor_idx.get("robot_gripper"),
+                        self.__idle_safe_kp, self.__idle_safe_kd,
+                        self.__idle_safe_grip_kp, self.__idle_safe_grip_kd)
+                    if not self.__idle_safe_active:
+                        self.__idle_safe_active = True
+                        hex_log(HEX_LOG_LEVEL["info"],
+                                "[hexarm] client idle > idle_hold_max_ms -> "
+                                "compliant safe-hold (gripper stays clamped)")
+                elif last_cmds is not None:
                     hold = last_cmds
                 else:
                     if idle_target is None and hold_pos is not None:
@@ -499,6 +596,38 @@ class HexRobotHexarm(HexRobotBase):
         hex_log(HEX_LOG_LEVEL["info"], f"[hexarm] control_mode -> {mode}")
         return True
 
+    def clear_fault(self) -> bool:
+        """Clear a latched parking-stop / fault and re-enter MIT so the arm resumes
+        WITHOUT a physical power-cycle. Best-effort against the closed hex_device SDK
+        (getattr-guarded); the streamed MIT commands then re-establish control."""
+        if self.__arm is None:
+            return False
+        ok = True
+        try:
+            if hasattr(self.__arm, "clear_parking_stop"):
+                self.__arm.clear_parking_stop()
+            if hasattr(self.__arm, "enable_mit"):
+                self.__arm.enable_mit()
+            self.__idle_safe_active = False   # let the work loop command again
+            hex_log(HEX_LOG_LEVEL["info"], "[hexarm] clear_fault -> re-enabled MIT")
+        except Exception as e:
+            print(f"\033[91m[hexarm] clear_fault error: {e}\033[0m")
+            ok = False
+        return ok
+
+    def get_fault(self) -> np.ndarray:
+        """Fault descriptor for the ZMQ buffer: float64 [active(0/1),
+        remotely_clearable(0/1)]. Best-effort from the SDK status summary
+        (parking_stop_detail); a parking stop is remotely clearable."""
+        active, clearable = 0.0, 1.0
+        try:
+            if self.__arm is not None and hasattr(self.__arm, "get_status_summary"):
+                s = self.__arm.get_status_summary() or {}
+                active = 1.0 if s.get("parking_stop_detail") else 0.0
+        except Exception:
+            pass
+        return np.array([active, clearable], dtype=np.float64)
+
     def __gravity_fn(self, q: np.ndarray) -> np.ndarray:
         """Generalized gravity at q — the pinocchio closure handed to MitArmSafety."""
         return self.__pin.computeGeneralizedGravity(
@@ -508,6 +637,8 @@ class HexRobotHexarm(HexRobotBase):
         if not self._working.is_set():
             return
         self._working.clear()
+        if self.__state_pub is not None:
+            self.__state_pub.close()
         self.__arm.stop()
         self.__hex_api.close()
         hex_log(HEX_LOG_LEVEL["info"], "HexRobotHexarm closed")

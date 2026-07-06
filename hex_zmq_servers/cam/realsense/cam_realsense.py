@@ -61,6 +61,24 @@ class HexCamRealsense(HexCamBase):
             raise ValueError(
                 f"camera_config is not valid, missing key: {missing_key}")
 
+        # Optional high-rate image broadcast (zmq.PUB): cam.<topic_name>.jpg
+        # (JPEG bgr8 + 16-byte [device_ts, host_ts] header) + throttled
+        # cam.<topic_name>.info (≈ ROS image_transport/compressed + camera_info).
+        # Enabled per camera via site.yaml cameras.<name>.pub_port. NON-BLOCKING:
+        # a slow/absent subscriber drops frames, never stalls the capture path.
+        self.__state_pub = None
+        self.__pub_topic = str(camera_config.get("topic_name", "cam"))
+        self.__cam_info_tick = 0
+        _pub_port = camera_config.get("pub_port")
+        if _pub_port:
+            try:
+                from ...robot.state_pub import StatePublisher
+                self.__state_pub = StatePublisher(int(_pub_port))
+                print(f"[realsense] image PUB on :{int(_pub_port)} "
+                      f"(topic cam.{self.__pub_topic}.jpg)")
+            except Exception as e:
+                print(f"[realsense] image PUB disabled: {e}")
+
         # variables
         # realsense variables
         ctx = rs.context()
@@ -278,6 +296,32 @@ class HexCamRealsense(HexCamBase):
         except Exception:
             pass
 
+    def __pub_jpg(self, ts, color_arr):
+        """Publish one frame on cam.<name>.jpg (+ throttled .info). Failures drop."""
+        if self.__state_pub is None or color_arr is None:
+            return
+        if not self.__state_pub.jpeg_wanted(self.__pub_topic):
+            return   # nobody subscribed to cam.<topic>.jpg -> skip the expensive encode
+        try:
+            import cv2
+            ok, buf = cv2.imencode(".jpg", color_arr)   # stream is bgr8 (rs.format.bgr8)
+            if not ok:
+                return
+            dts = (float(ts.get("s", 0)) + float(ts.get("ns", 0)) * 1e-9
+                   if isinstance(ts, dict) else float(ts))
+            self.__state_pub.publish_jpeg(self.__pub_topic, dts, buf.tobytes())
+            n = self.__cam_info_tick
+            self.__cam_info_tick = n + 1
+            if n % 30 == 0:
+                h, w = color_arr.shape[:2]
+                self.__state_pub.publish_json(
+                    f"cam.{self.__pub_topic}.info", dts,
+                    {"width": int(w), "height": int(h),
+                     "fps": int(self.__frame_rate),
+                     "format": "jpeg/bgr8", "frame": self.__pub_topic})
+        except Exception:
+            pass
+
     def __pipeline_callback(self, frame):
         """Pipeline-level callback. Each invocation receives ONE frame."""
         try:
@@ -340,6 +384,7 @@ class HexCamRealsense(HexCamBase):
             depth_arr = np.asanyarray(depth.get_data()).copy()
             if rgb_q is not None:
                 rgb_q.append((ts, rgb_count, color_arr))
+            self.__pub_jpg(ts, color_arr)
             if depth_q is not None:
                 depth_q.append((ts, depth_count, depth_arr))
         except Exception as exc:
@@ -430,9 +475,10 @@ class HexCamRealsense(HexCamBase):
 
             color = aligned.get_color_frame()
             if color:
-                rgb_queue.append((ts, rgb_count,
-                                   np.asanyarray(color.get_data()).copy()))
+                color_arr = np.asanyarray(color.get_data()).copy()
+                rgb_queue.append((ts, rgb_count, color_arr))
                 rgb_count = (rgb_count + 1) % self._max_seq_num
+                self.__pub_jpg(ts, color_arr)
             depth = aligned.get_depth_frame()
             if depth:
                 depth_queue.append((ts, depth_count,

@@ -119,6 +119,16 @@ class HexRobotClientBase(HexZMQClientBase):
         hdr, _ = self.request({"cmd": "set_control_mode", "args": mode})
         return isinstance(hdr, dict) and hdr.get("cmd") == "set_control_mode_ok"
 
+    def clear_fault(self) -> bool:
+        """One-shot fault clear (REQ/REP): clears a latched parking-stop + re-enters MIT."""
+        hdr, _ = self.request({"cmd": "clear_fault"})
+        return isinstance(hdr, dict) and hdr.get("cmd") == "clear_fault_ok"
+
+    def get_fault(self):
+        """Device fault buffer float64 [active, remotely_clearable] (or None)."""
+        _, fault = self.request({"cmd": "get_fault"})
+        return fault
+
     def _get_states_inner(self):
         hdr, states = self.request({
             "cmd":

@@ -120,3 +120,49 @@ class MitArmSafety:
             effort_limit=ts.get("effort_limit_Nm"),
             tau_slew=ts.get("slew_Nm_per_tick"),
         )
+
+
+# ============================ client-death safe-hold =========================
+# When a client's command stream stops (crash / network drop / no client at all),
+# robot_hexarm's work_loop keeps feeding the firmware watchdog. Re-sending the LAST
+# command forever leaves the arm rigid at its last kp (up to ~200) against whatever
+# it was touching — not a safe stop. After ``idle_hold_max_ms`` of silence we instead
+# stream a gravity-compensated COMPLIANT hold of the MEASURED pose (a soft float; the
+# arm can be pushed away and does not collapse because MitArmSafety adds gravity FF)
+# while the GRIPPER stays clamped so a grasped payload is not dropped. These two pure
+# helpers own that decision + command shaping so the behavior is unit-testable with
+# no device. NOTE: the safe-hold relies on gravity_comp being enabled on the device
+# (real arms render gravity_comp=True); with gravity FF off, a low-kp measured-pose
+# hold would droop instead of floating.
+
+def idle_gone_stale(silent_ms, idle_hold_max_ms):
+    """True when the client command stream has been silent longer than
+    ``idle_hold_max_ms`` and the arm should drop to the compliant safe-hold.
+    ``silent_ms`` is the elapsed ms since the last FRESH client command — pass a
+    plain number (compute it with ``hex_ts_delta_ms`` at the call site) so this
+    helper stays device-free and unit-testable.
+    ``idle_hold_max_ms`` None or <=0 disables the safe-stop (legacy hold-last)."""
+    if idle_hold_max_ms is None or idle_hold_max_ms <= 0:
+        return False
+    return silent_ms > float(idle_hold_max_ms)
+
+
+def build_safe_hold_cmd(measured_pose, arm_idx, gripper_idx,
+                        arm_kp, arm_kd, gripper_kp, gripper_kd):
+    """Build a ``(dofs, 5)`` MIT command ``[pos, vel, tau_ff, kp, kd]`` that holds
+    the arm compliantly at its MEASURED pose. vel and tau_ff are zero — gravity is
+    added downstream by ``MitArmSafety.apply`` (zero/low-stiffness path). The arm
+    joints get soft ``arm_kp``/``arm_kd`` (0 = pure zero-gravity float); the gripper
+    gets ``gripper_kp`` > 1e-6 so ``robot_hexarm.__set_cmds`` keeps it position-held
+    (clamped), not compliant, so a grasped payload is not released."""
+    q = np.asarray(measured_pose, dtype=np.float64).reshape(-1)
+    cmd = np.zeros((q.shape[0], 5), dtype=np.float64)
+    cmd[:, 0] = q
+    ai = np.asarray(arm_idx, dtype=int)
+    cmd[ai, 3] = arm_kp
+    cmd[ai, 4] = arm_kd
+    if gripper_idx is not None and len(gripper_idx) > 0:
+        gi = np.asarray(gripper_idx, dtype=int)
+        cmd[gi, 3] = gripper_kp
+        cmd[gi, 4] = gripper_kd
+    return cmd
