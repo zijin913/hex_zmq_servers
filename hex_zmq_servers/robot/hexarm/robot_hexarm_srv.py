@@ -6,6 +6,19 @@
 # Date  : 2025-09-14
 ################################################################
 
+# Crash diagnostics: on a fatal native signal (SIGSEGV/SIGABRT/SIGFPE) dump EVERY
+# thread's Python stack to stderr -> the arm-server err log. This is what locates a
+# HexFellow-SDK native crash (the segfault seen after repeated
+# PscApiCommunicationTimeout parks), which otherwise kills the process with no trace.
+import faulthandler
+faulthandler.enable()
+try:  # best-effort: also allow a core dump (needs the host core_pattern to keep it)
+    import resource
+    resource.setrlimit(resource.RLIMIT_CORE,
+                       (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+except Exception:
+    pass
+
 import numpy as np
 
 try:
