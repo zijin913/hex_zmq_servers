@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
-"""Shared end-effector FK for the high-rate PUB stream (``<side>.ee`` topic).
+"""Shared end-effector FK for the high-rate PUB stream (``<side>/ee_pose`` topic).
 
 ONE implementation used by BOTH the real hexarm device and the MuJoCo sim device,
 built from the SAME gr100.urdf the real device already uses for gravity comp — so
@@ -41,3 +41,23 @@ class EEPoseFK:
         T = self._data.oMf[self._fid]
         quat = pin.Quaternion(T.rotation).coeffs()  # Eigen coeffs order = (x, y, z, w)
         return np.concatenate([np.asarray(T.translation), np.asarray(quat)])
+
+    def wrench(self, q_arm, tau_arm, sign: float = 1.0) -> np.ndarray:
+        """Quasi-static EE wrench ``[fx,fy,fz, mx,my,mz]`` at ``frame`` in the arm BASE
+        frame, solving ``J(q)^T F = tau_arm`` (least-squares, so it degrades gracefully
+        near singularities instead of blowing up).
+
+        ``tau_arm`` is the per-joint EXTERNAL torque — measured motor effort minus the
+        modeled gravity at the measured pose, i.e. the SAME ``<side>/tau_ext`` estimate.
+        ``sign`` flips the convention: with the default (+1, matching
+        ``tools/ee_wrench_check.py``) the raw solve is reported; set -1 after the
+        known-weight calibration so a downward hung load reads as -z (the external
+        wrench applied TO the robot). MODEL-BASED, quasi-static — NOT an F/T sensor;
+        joint friction sets a noise floor and fast motion adds unmodeled inertial error."""
+        pin = self._pin
+        q = np.asarray(q_arm, dtype=np.float64).ravel()[:self._model.nq]
+        tau = np.asarray(tau_arm, dtype=np.float64).ravel()[:self._model.nq]
+        J = np.asarray(pin.computeFrameJacobian(
+            self._model, self._data, q, self._fid, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED))
+        F, *_ = np.linalg.lstsq(J.T, tau, rcond=None)
+        return float(sign) * F

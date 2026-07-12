@@ -158,7 +158,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                 print(f"[mujoco] state PUB on :{int(_pub_port)} (left+right)")
             except Exception as e:
                 print(f"[mujoco] state PUB disabled: {e}")
-        # EE pose topic (<side>.ee): SAME gr100.urdf FK as the real device (NOT the
+        # EE pose topic (<side>/ee_pose): SAME gr100.urdf FK as the real device (NOT the
         # MJCF world pose) -> identical conventions: link_6 in the arm's own base
         # frame, quaternion xyzw.
         self.__ee_fk = None
@@ -274,12 +274,12 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
         return True
 
     def __pub_cam_jpg(self, name, ts, img):
-        """cam.<name>.jpg JPEG topic + throttled cam.<name>.info (≈ ROS
-        image_transport/compressed + camera_info). Non-blocking; failures drop."""
+        """cam/<name>/image/compressed JPEG topic + throttled cam/<name>/camera_info
+        (≈ sensor_msgs/CompressedImage + CameraInfo). Non-blocking; failures drop."""
         if self.__state_pub is None or img is None:
             return
         if not self.__state_pub.jpeg_wanted(name):
-            return   # nobody subscribed to cam.<name>.jpg -> skip the expensive encode
+            return   # nobody subscribed to the image topic -> skip the expensive encode
         try:
             import cv2
             ok, buf = cv2.imencode(".jpg", img)
@@ -293,7 +293,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
             if n % 30 == 0:
                 h, w = img.shape[:2]
                 self.__state_pub.publish_json(
-                    f"cam.{name}.info", dts,
+                    f"cam/{name}/camera_info", dts,
                     {"width": int(w), "height": int(h),
                      "format": "jpeg/bgr8", "frame": name})
         except Exception:
@@ -372,6 +372,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                         if self.__state_pub is not None:
                             _dts = (float(ts.get("s", 0)) + float(ts.get("ns", 0)) * 1e-9
                                     if isinstance(ts, dict) else float(ts))
+                            sp = self.__state_pub
                             # tau_ext ESTIMATE = measured effort − live qfrc_bias
                             # (gravity+Coriolis) at the arm joints; free per mj_step.
                             # Mirrors the real device so sim predicts real.
@@ -383,22 +384,21 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                                 except Exception:
                                     return None
                             def _ee(st):
-                                if self.__ee_fk is None:
-                                    return None
                                 try:
                                     return self.__ee_fk.compute(st[:6, 0])
                                 except Exception:
                                     return None
-                            self.__state_pub.publish(
-                                "left", _dts, states_left[:, 0],
-                                states_left[:, 1], states_left[:, 2],
-                                tau_ext=_tau_ext(states_left, self.__state_left_idx),
-                                ee=_ee(states_left))
-                            self.__state_pub.publish(
-                                "right", _dts, states_right[:, 0],
-                                states_right[:, 1], states_right[:, 2],
-                                tau_ext=_tau_ext(states_right, self.__state_right_idx),
-                                ee=_ee(states_right))
+                            # Estimates only when a client is subscribed (keep the pinocchio
+                            # FK off the loop when nobody watches; matches the real device).
+                            def _pub(side, st, idx):
+                                tau = (_tau_ext(st, idx)
+                                       if sp.has_subscriber(f"{side}/tau_ext".encode()) else None)
+                                ee = (_ee(st) if (self.__ee_fk is not None
+                                      and sp.has_subscriber(f"{side}/ee_pose".encode())) else None)
+                                sp.publish(side, _dts, st[:, 0], st[:, 1], st[:, 2],
+                                           tau_ext=tau, ee=ee)
+                            _pub("left", states_left, self.__state_left_idx)
+                            _pub("right", states_right, self.__state_right_idx)
                         states_obj_queue.append(
                             (ts, states_obj_count, states_obj))
                         states_obj_count = (states_obj_count +

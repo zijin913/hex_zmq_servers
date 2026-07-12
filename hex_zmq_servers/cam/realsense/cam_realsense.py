@@ -61,9 +61,9 @@ class HexCamRealsense(HexCamBase):
             raise ValueError(
                 f"camera_config is not valid, missing key: {missing_key}")
 
-        # Optional high-rate image broadcast (zmq.PUB): cam.<topic_name>.jpg
+        # Optional high-rate image broadcast (zmq.PUB): cam/<topic_name>/image/compressed
         # (JPEG bgr8 + 16-byte [device_ts, host_ts] header) + throttled
-        # cam.<topic_name>.info (≈ ROS image_transport/compressed + camera_info).
+        # cam/<topic_name>/camera_info (≈ sensor_msgs/CompressedImage + CameraInfo).
         # Enabled per camera via site.yaml cameras.<name>.pub_port. NON-BLOCKING:
         # a slow/absent subscriber drops frames, never stalls the capture path.
         self.__state_pub = None
@@ -75,7 +75,7 @@ class HexCamRealsense(HexCamBase):
                 from ...robot.state_pub import StatePublisher
                 self.__state_pub = StatePublisher(int(_pub_port))
                 print(f"[realsense] image PUB on :{int(_pub_port)} "
-                      f"(topic cam.{self.__pub_topic}.jpg)")
+                      f"(topic cam/{self.__pub_topic}/image/compressed)")
             except Exception as e:
                 print(f"[realsense] image PUB disabled: {e}")
 
@@ -297,11 +297,11 @@ class HexCamRealsense(HexCamBase):
             pass
 
     def __pub_jpg(self, ts, color_arr):
-        """Publish one frame on cam.<name>.jpg (+ throttled .info). Failures drop."""
+        """Publish one frame on cam/<name>/image/compressed (+ throttled camera_info). Failures drop."""
         if self.__state_pub is None or color_arr is None:
             return
         if not self.__state_pub.jpeg_wanted(self.__pub_topic):
-            return   # nobody subscribed to cam.<topic>.jpg -> skip the expensive encode
+            return   # nobody subscribed to the image topic -> skip the expensive encode
         try:
             import cv2
             ok, buf = cv2.imencode(".jpg", color_arr)   # stream is bgr8 (rs.format.bgr8)
@@ -315,7 +315,7 @@ class HexCamRealsense(HexCamBase):
             if n % 30 == 0:
                 h, w = color_arr.shape[:2]
                 self.__state_pub.publish_json(
-                    f"cam.{self.__pub_topic}.info", dts,
+                    f"cam/{self.__pub_topic}/camera_info", dts,
                     {"width": int(w), "height": int(h),
                      "fps": int(self.__frame_rate),
                      "format": "jpeg/bgr8", "frame": self.__pub_topic})

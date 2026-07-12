@@ -139,7 +139,7 @@ class HexRobotHexarm(HexRobotBase):
                       f"(side={self.__pub_side})\033[0m")
             except Exception as e:
                 print(f"\033[33m[hexarm] state PUB disabled: {e}\033[0m")
-            # EE pose topic (<side>.ee): link_6 in the arm base frame, quat xyzw.
+            # EE pose topic (<side>/ee_pose): link_6 in the arm base frame, quat xyzw.
             # Same gr100.urdf-based FK as the sim device -> identical conventions.
             try:
                 from ..ee_fk import EEPoseFK
@@ -164,6 +164,13 @@ class HexRobotHexarm(HexRobotBase):
         # behavior is unchanged unless a config opts in.
         self.__gravity_comp = bool(robot_config.get("gravity_comp", False))
         self.__grav_scale = float(robot_config.get("gravity_comp_scale", 1.0))
+
+        # <side>/wrench = ee_wrench_sign · J(q)^-T · tau_ext — quasi-static Cartesian
+        # force estimate published on the state stream. Sign default +1 matches
+        # tools/ee_wrench_check.py's raw solve; flip to -1 after the known-weight
+        # calibration so a downward hung load reads -z (external wrench applied to the
+        # robot). Only computed when a client is subscribed (see work_loop).
+        self.__ee_wrench_sign = float(robot_config.get("ee_wrench_sign", 1.0))
 
         # Reference slew (anti-lunge) — IDENTICAL to the sim device so sim predicts
         # real. Cap how far the commanded arm target may lead the MEASURED angle
@@ -329,26 +336,43 @@ class HexRobotHexarm(HexRobotBase):
                     states_count = (states_count + 1) % self._max_seq_num
                     # High-rate PUB broadcast of this fresh frame (non-blocking).
                     if self.__state_pub is not None:
-                        # External-torque ESTIMATE: measured effort minus modeled
-                        # gravity at the measured pose (arm joints only; gripper stays
-                        # raw effort). Estimate from motor currents + rigid-body model
-                        # — NOT an F/T sensor. None when pinocchio is unavailable.
+                        # The ESTIMATE layer (pinocchio: gravity, FK, Jacobian) is computed
+                        # ONLY when a client is subscribed to that topic — it stays OFF this
+                        # GIL-shared work loop (SDK read thread) when nobody is watching, like
+                        # the camera JPEG encode. pos/vel/eff/joint_states are cheap slices and
+                        # are always published (ZMQ drops them if unsubscribed).
+                        _sd = self.__pub_side
+                        sp = self.__state_pub
+                        sub_tau = sp.has_subscriber(f"{_sd}/tau_ext".encode())
+                        sub_wrench = sp.has_subscriber(f"{_sd}/wrench".encode())
+                        sub_ee = sp.has_subscriber(f"{_sd}/ee_pose".encode())
+                        # tau_ext (measured effort − modeled gravity): a motor-current + model
+                        # ESTIMATE, NOT an F/T sensor. Needed for /tau_ext AND /wrench.
                         tau_ext = None
-                        if self.__pin is not None:
+                        if self.__pin is not None and (sub_tau or sub_wrench):
                             try:
                                 tau_ext = states[:, 2].astype(np.float64).copy()
                                 tau_ext[arm_ids] -= self.__gravity_fn(states[arm_ids, 0])
                             except Exception:
                                 tau_ext = None
+                        # ee_pose (forwardKinematics) only when /ee_pose is subscribed.
                         ee = None
-                        if self.__ee_fk is not None:
+                        if self.__ee_fk is not None and sub_ee:
                             try:
                                 ee = self.__ee_fk.compute(states[arm_ids, 0])
                             except Exception:
                                 ee = None
+                        # wrench (Jacobian + solve) only when /wrench is subscribed.
+                        ee_wrench = None
+                        if self.__ee_fk is not None and tau_ext is not None and sub_wrench:
+                            try:
+                                ee_wrench = self.__ee_fk.wrench(
+                                    states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
+                            except Exception:
+                                ee_wrench = None
                         self.__state_pub.publish(self.__pub_side, ts,
                                                  states[:, 0], states[:, 1], states[:, 2],
-                                                 tau_ext=tau_ext, ee=ee)
+                                                 tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
 
             # cmds
             cmds_pack = None
