@@ -7,6 +7,7 @@
 ################################################################
 
 import threading
+import time
 import numpy as np
 from collections import deque
 from abc import abstractmethod
@@ -66,11 +67,20 @@ class HexCamClientBase(HexZMQClientBase):
         self._depth_queue = deque(maxlen=self._deque_maxlen)
         self._rgbd_queue = deque(maxlen=self._deque_maxlen)
         self._recv_loop_hz = net_config.get("recv_loop_hz", 200)
+        # Demand-driven recv cadence: poll the camera server at recv_loop_hz only while a
+        # consumer is actively reading (get_rgb/depth/rgbd within recv_idle_after seconds);
+        # otherwise drop to recv_idle_hz so an UNWATCHED camera stops hammering localhost
+        # ZMQ + memcpy. A reader ramps the queue back to fresh within one idle tick, so
+        # active use (teleop / policy / MJPEG) is unchanged — this only idles the unwatched.
+        self._recv_idle_hz = net_config.get("recv_idle_hz", 2.0)
+        self._recv_idle_after = net_config.get("recv_idle_after", 1.0)
+        self._last_read = 0.0
 
     def __del__(self):
         HexZMQClientBase.__del__(self)
 
     def get_rgb(self, newest: bool = False):
+        self._last_read = time.monotonic()   # demand signal for _recv_loop cadence
         try:
             if self._realtime_mode or newest:
                 hdr, img = self._rgb_queue[-1]
@@ -85,6 +95,7 @@ class HexCamClientBase(HexZMQClientBase):
             return None, None
 
     def get_depth(self, newest: bool = False):
+        self._last_read = time.monotonic()
         try:
             if self._realtime_mode or newest:
                 hdr, img = self._depth_queue[-1]
@@ -100,6 +111,7 @@ class HexCamClientBase(HexZMQClientBase):
 
     def get_rgbd(self, newest: bool = False):
         """Get both RGB and depth frames together (synchronized)."""
+        self._last_read = time.monotonic()
         try:
             if self._realtime_mode or newest:
                 hdr, rgb, depth = self._rgbd_queue[-1]
@@ -179,7 +191,8 @@ class HexCamClientBase(HexZMQClientBase):
             return None, None
 
     def _recv_loop(self):
-        rate = HexRate(self._recv_loop_hz)
+        fast = HexRate(self._recv_loop_hz)     # active cadence while a consumer is reading
+        idle = HexRate(self._recv_idle_hz)     # near-zero cadence when nobody reads
         while self._recv_flag:
             # Use get_rgbd for synchronized frames (1 request instead of 2)
             hdr, rgb, depth = self._get_rgbd_inner()
@@ -197,7 +210,9 @@ class HexCamClientBase(HexZMQClientBase):
                 depth_hdr = {**hdr, "cmd": "get_depth_ok"}
                 self._rgb_queue.append((rgb_hdr, rgb))
                 self._depth_queue.append((depth_hdr, depth))
-            rate.sleep()
+            # Demand-driven cadence: full rate only while a consumer read recently.
+            (fast if time.monotonic() - self._last_read < self._recv_idle_after
+             else idle).sleep()
 
 
 class HexCamServerBase(HexZMQServerBase):
