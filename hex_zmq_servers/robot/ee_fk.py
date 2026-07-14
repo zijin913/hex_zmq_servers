@@ -29,9 +29,19 @@ class EEPoseFK:
         self._pin = pin
         self._model = pin.buildModelFromUrdf(str(urdf_path or _URDF))
         self._data = self._model.createData()
+        self._model.gravity.linear = np.array([0.0, 0.0, -9.81])  # match the real gravity model
         self._fid = self._model.getFrameId(frame)
         if self._fid >= self._model.nframes:
             raise ValueError(f"frame {frame!r} not in {_URDF.name}")
+
+    def gravity(self, q_arm) -> np.ndarray:
+        """Modeled joint gravity torque at ``q_arm`` (the 6 arm joints). ``tau_ext =
+        measured_effort - gravity(q)`` is the ``<side>/tau_ext`` estimate the .wrench
+        solve consumes. Same gr100.urdf model as .compute/.wrench."""
+        pin = self._pin
+        q = np.asarray(q_arm, dtype=np.float64).ravel()[:self._model.nq]
+        return np.asarray(pin.computeGeneralizedGravity(self._model, self._data, q),
+                          dtype=np.float64)
 
     def compute(self, q_arm) -> np.ndarray:
         pin = self._pin
