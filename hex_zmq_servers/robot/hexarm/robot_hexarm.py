@@ -321,9 +321,53 @@ class HexRobotHexarm(HexRobotBase):
         last_send_ts = hex_ts_now()
         last_real_cmd_ts = hex_ts_now()  # last FRESH client command (safe-stop timer)
         rate = HexRate(self.__work_loop_hz)
+        # --- optional hot-loop profiler (SODA_LOOP_PROFILE=1): per-stage SDK
+        # call latency (read = get_simple_motor_status, write = __set_cmds ->
+        # motor_command), dumped every 5 s OFF the hot path. Near-zero cost when
+        # off (one bool test/tick). GATE 1: does motor_command enqueue (us) or
+        # block on a controller ack (ms)?  No behaviour change; timing only.
+        import os as _os, time as _time, threading as _threading
+        _prof_on = bool(_os.environ.get("SODA_LOOP_PROFILE"))
+        if _prof_on:
+            _N = max(2000, int(self.__work_loop_hz) * 5)
+            _rd = np.zeros(_N); _wr = np.zeros(_N); _lp = np.zeros(_N)
+            _idx = {"r": 0, "w": 0, "l": 0}
+            _pstop = _threading.Event()
+
+            def _prof_dump():
+                while not _pstop.wait(5.0):
+                    def _s(a, n):
+                        v = a[:min(n, _N)]; v = v[v > 0]
+                        if v.size == 0:
+                            return "n=0"
+                        return (f"p50={np.percentile(v, 50) / 1e3:7.1f} "
+                                f"p99={np.percentile(v, 99) / 1e3:7.1f} "
+                                f"max={v.max() / 1e3:8.1f}us n={v.size}")
+                    print(f"[PROF] read  {_s(_rd, _idx['r'])}\n"
+                          f"[PROF] write {_s(_wr, _idx['w'])}\n"
+                          f"[PROF] loop  {_s(_lp, _idx['l'])}", flush=True)
+            _threading.Thread(target=_prof_dump, name="loop_prof",
+                              daemon=True).start()
+        # --- optional PUB decouple (SODA_PUB_THREAD=1): move the ~0.5 ms state
+        # serialize/encode/send OFF this hot control loop to a non-RT publisher
+        # thread. The hot loop only hands off the latest frame (states.copy +
+        # notify, ~us); the worker publishes it (latest-wins, coalescing). Helps
+        # because the worker runs during the loop's rate.sleep (GIL released).
+        self.__pub_thread_on = (bool(_os.environ.get("SODA_PUB_THREAD"))
+                                and self.__state_pub is not None)
+        if self.__pub_thread_on:
+            self.__pub_cv = _threading.Condition()
+            self.__pub_slot = None
+            self.__pub_stop = _threading.Event()
+            _threading.Thread(target=self.__pub_worker, name="pub_worker",
+                              daemon=True).start()
         while self._working.is_set() and not stop_event.is_set():
             # states
+            _t0 = _time.perf_counter_ns() if _prof_on else 0
             ts, states = self.__get_states()
+            if _prof_on:
+                _rd[_idx["r"] % _N] = _time.perf_counter_ns() - _t0
+                _idx["r"] += 1
             if states is not None:
                 hold_pos = states[:, 0]
                 # Cache measured arm q for the max_pos_err guard (which runs inside
@@ -335,7 +379,13 @@ class HexRobotHexarm(HexRobotBase):
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
                     # High-rate PUB broadcast of this fresh frame (non-blocking).
-                    if self.__state_pub is not None:
+                    if self.__state_pub is not None and self.__pub_thread_on:
+                        # Hand off to the non-RT publisher thread (cheap copy +
+                        # notify); serialize/encode/send runs OFF this hot loop.
+                        with self.__pub_cv:
+                            self.__pub_slot = (ts, states.copy())
+                            self.__pub_cv.notify()
+                    elif self.__state_pub is not None:
                         # The ESTIMATE layer (pinocchio: gravity, FK, Jacobian) is computed
                         # ONLY when a client is subscribed to that topic — it stays OFF this
                         # GIL-shared work loop (SDK read thread) when nobody is watching, like
@@ -396,7 +446,11 @@ class HexRobotHexarm(HexRobotBase):
                     # 命令时间戳新鲜度校验已移除:始终下发(see fork history)
                     # Never let a malformed command kill the control loop / server.
                     try:
+                        _tw = _time.perf_counter_ns() if _prof_on else 0
                         self.__set_cmds(cmds)
+                        if _prof_on:
+                            _wr[_idx["w"] % _N] = _time.perf_counter_ns() - _tw
+                            _idx["w"] += 1
                     except Exception as e:
                         print(f"\033[91m[hexarm] set_cmds error: {e}\033[0m")
                     last_send_ts = hex_ts_now()
@@ -441,16 +495,78 @@ class HexRobotHexarm(HexRobotBase):
                     hold = idle_target
                 if hold is not None:
                     try:
+                        _tw = _time.perf_counter_ns() if _prof_on else 0
                         self.__set_cmds(hold)
+                        if _prof_on:
+                            _wr[_idx["w"] % _N] = _time.perf_counter_ns() - _tw
+                            _idx["w"] += 1
                     except Exception as e:
                         print(f"\033[91m[hexarm] idle-hold set_cmds error: {e}\033[0m")
                     last_send_ts = hex_ts_now()
 
             # sleep
+            if _prof_on:
+                _lp[_idx["l"] % _N] = _time.perf_counter_ns() - _t0
+                _idx["l"] += 1
             rate.sleep()
 
+        # stop the PUB worker before teardown
+        if self.__pub_thread_on:
+            self.__pub_stop.set()
+            with self.__pub_cv:
+                self.__pub_cv.notify()
         # close
         self.close()
+
+    def __pub_worker(self):
+        """Non-RT publisher: drain the latest state frame handed off by the hot
+        control loop and run __do_publish OFF that thread (latest-wins /
+        coalescing). Keeps the ~0.5 ms serialize/encode/send off the 1 kHz path."""
+        while not self.__pub_stop.is_set():
+            with self.__pub_cv:
+                while self.__pub_slot is None and not self.__pub_stop.is_set():
+                    self.__pub_cv.wait(0.1)
+                if self.__pub_stop.is_set():
+                    return
+                ts, states = self.__pub_slot
+                self.__pub_slot = None
+            try:
+                self.__do_publish(ts, states)
+            except Exception as e:
+                print(f"\033[91m[hexarm] pub_worker error: {e}\033[0m")
+
+    def __do_publish(self, ts, states):
+        """Serialize + (subscriber-gated pinocchio) estimate + PUB-send one state
+        frame. Called inline (SODA_PUB_THREAD off) or from __pub_worker (on)."""
+        arm_ids = self.__motor_idx["robot_arm"]
+        _sd = self.__pub_side
+        sp = self.__state_pub
+        sub_tau = sp.has_subscriber(f"{_sd}/tau_ext".encode())
+        sub_wrench = sp.has_subscriber(f"{_sd}/wrench".encode())
+        sub_ee = sp.has_subscriber(f"{_sd}/ee_pose".encode())
+        tau_ext = None
+        if self.__pin is not None and (sub_tau or sub_wrench):
+            try:
+                tau_ext = states[:, 2].astype(np.float64).copy()
+                tau_ext[arm_ids] -= self.__gravity_fn(states[arm_ids, 0])
+            except Exception:
+                tau_ext = None
+        ee = None
+        if self.__ee_fk is not None and sub_ee:
+            try:
+                ee = self.__ee_fk.compute(states[arm_ids, 0])
+            except Exception:
+                ee = None
+        ee_wrench = None
+        if self.__ee_fk is not None and tau_ext is not None and sub_wrench:
+            try:
+                ee_wrench = self.__ee_fk.wrench(
+                    states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
+            except Exception:
+                ee_wrench = None
+        self.__state_pub.publish(self.__pub_side, ts,
+                                 states[:, 0], states[:, 1], states[:, 2],
+                                 tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
 
     def __get_states(self) -> tuple[np.ndarray | None, dict | None]:
         if self.__arm is None:
