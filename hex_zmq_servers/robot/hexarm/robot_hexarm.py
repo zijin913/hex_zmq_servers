@@ -348,13 +348,30 @@ class HexRobotHexarm(HexRobotBase):
                           f"[PROF] loop  {_s(_lp, _idx['l'])}", flush=True)
             _threading.Thread(target=_prof_dump, name="loop_prof",
                               daemon=True).start()
-        # --- optional PUB decouple (SODA_PUB_THREAD=1): move the ~0.5 ms state
-        # serialize/encode/send OFF this hot control loop to a non-RT publisher
-        # thread. The hot loop only hands off the latest frame (states.copy +
-        # notify, ~us); the worker publishes it (latest-wins, coalescing). Helps
-        # because the worker runs during the loop's rate.sleep (GIL released).
-        self.__pub_thread_on = (bool(_os.environ.get("SODA_PUB_THREAD"))
+        # --- optional RT control path (SODA_RT_CONTROL=1): pin THIS control loop
+        # (the device main thread) to an isolated core (left->6 / right->7, to
+        # match isolcpus=6,7) + SCHED_FIFO-80, and force the PUB decouple on so
+        # the serialize/send never blocks the 1 kHz loop. Best-effort + guarded:
+        # any failure logs and falls back to normal scheduling — a physical arm
+        # must never fail to start over RT setup. Requires the box provisioned by
+        # scripts/rt/rt_setup.sh (isolcpus + rtprio). SODA_RT_CORE overrides.
+        _rt_on = bool(_os.environ.get("SODA_RT_CONTROL"))
+        if _rt_on:
+            try:
+                _rc = _os.environ.get("SODA_RT_CORE")
+                _core = int(_rc) if _rc else (6 if self.__pub_side == "left" else 7)
+                _os.sched_setaffinity(0, {_core})
+                _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(80))
+                print(f"[hexarm] RT control loop -> core {_core}, SCHED_FIFO-80")
+            except Exception as e:
+                print(f"[hexarm] RT setup failed ({e}); default scheduling")
+        # --- PUB decouple (SODA_PUB_THREAD=1, or implied by SODA_RT_CONTROL): move
+        # the ~0.5 ms state serialize/encode/send OFF this hot loop to a non-RT
+        # publisher thread (latest-wins, coalescing). The hot loop only hands off
+        # the latest frame (states.copy + notify, ~us).
+        self.__pub_thread_on = ((bool(_os.environ.get("SODA_PUB_THREAD")) or _rt_on)
                                 and self.__state_pub is not None)
+        self.__pub_rt = _rt_on
         if self.__pub_thread_on:
             self.__pub_cv = _threading.Condition()
             self.__pub_slot = None
@@ -522,6 +539,16 @@ class HexRobotHexarm(HexRobotBase):
         """Non-RT publisher: drain the latest state frame handed off by the hot
         control loop and run __do_publish OFF that thread (latest-wins /
         coalescing). Keeps the ~0.5 ms serialize/encode/send off the 1 kHz path."""
+        if self.__pub_rt:
+            # RT path: keep the feedback publisher OFF the isolated control cores
+            # (6,7); FIFO-40 on housekeeping cores 0-5 -> responsive without ever
+            # preempting the control loop. Guarded (never crash the publisher).
+            try:
+                import os as _os
+                _os.sched_setaffinity(0, {0, 1, 2, 3, 4, 5})
+                _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(40))
+            except Exception as e:
+                print(f"[hexarm] pub_worker RT setup failed ({e})")
         while not self.__pub_stop.is_set():
             with self.__pub_cv:
                 while self.__pub_slot is None and not self.__pub_stop.is_set():
