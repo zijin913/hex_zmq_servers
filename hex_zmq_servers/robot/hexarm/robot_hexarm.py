@@ -128,13 +128,19 @@ class HexRobotHexarm(HexRobotBase):
         # the device loop rate (alongside the REQ/REP get_states path). NON-BLOCKING:
         # a slow/absent subscriber drops frames and never stalls this control loop.
         self.__pub_side = str(robot_config.get("side", "arm"))
+        # arm-PTP -> host-monotonic offset for the PUB device_ts (see __ptp_to_mono);
+        # lazy-init on the first frame, then a decaying-max filter tracks slow PTP drift.
+        self.__ptp_mono_offset = None
+        self.__ptp_mono_offset_leak = 1e-7   # ~50 us/s decay @ 500 Hz
+        self.__ts_to_float = None
         self.__state_pub = None
         self.__ee_fk = None
         _pub_port = robot_config.get("pub_port")
         if _pub_port:
             try:
-                from ..state_pub import StatePublisher
+                from ..state_pub import StatePublisher, _ts_to_float
                 self.__state_pub = StatePublisher(int(_pub_port))
+                self.__ts_to_float = _ts_to_float
                 print(f"\033[36m[hexarm] state PUB on :{int(_pub_port)} "
                       f"(side={self.__pub_side})\033[0m")
             except Exception as e:
@@ -395,12 +401,16 @@ class HexRobotHexarm(HexRobotBase):
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
+                    # Re-anchor the PUB device_ts from the arm PTP clock to host
+                    # CLOCK_MONOTONIC so host_ts - device_ts is a true sensor->host
+                    # latency, not a clock-domain offset. REQ/REP keeps the raw PTP ts.
+                    pub_ts = self.__ptp_to_mono(ts) if self.__state_pub is not None else ts
                     # High-rate PUB broadcast of this fresh frame (non-blocking).
                     if self.__state_pub is not None and self.__pub_thread_on:
                         # Hand off to the non-RT publisher thread (cheap copy +
                         # notify); serialize/encode/send runs OFF this hot loop.
                         with self.__pub_cv:
-                            self.__pub_slot = (ts, states.copy())
+                            self.__pub_slot = (pub_ts, states.copy())
                             self.__pub_cv.notify()
                     elif self.__state_pub is not None:
                         # The ESTIMATE layer (pinocchio: gravity, FK, Jacobian) is computed
@@ -437,7 +447,7 @@ class HexRobotHexarm(HexRobotBase):
                                     states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
                             except Exception:
                                 ee_wrench = None
-                        self.__state_pub.publish(self.__pub_side, ts,
+                        self.__state_pub.publish(self.__pub_side, pub_ts,
                                                  states[:, 0], states[:, 1], states[:, 2],
                                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
 
@@ -594,6 +604,26 @@ class HexRobotHexarm(HexRobotBase):
         self.__state_pub.publish(self.__pub_side, ts,
                                  states[:, 0], states[:, 1], states[:, 2],
                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
+
+    def __ptp_to_mono(self, ts):
+        """Re-express an arm-clock (PTP) device timestamp in the host CLOCK_MONOTONIC
+        base so a downstream ``host_ts - device_ts`` is a real sensor->host latency, not
+        a clock-domain offset. The arm firmware stamps samples on its PTP hardware clock
+        (hex_device_api) while the host publishes host_ts on ``time.monotonic()`` — two
+        epochs. ``ptp - monotonic`` = OFFSET - read_age <= OFFSET, so a decaying-max over
+        it recovers the constant OFFSET from the least-delayed sample (scheduling delays
+        only shrink the term, so the max is robust to them); the slow leak tracks PTP
+        drift. Subtract OFFSET -> device_ts in the monotonic base. No-op when the arm
+        falls back to a host clock (OFFSET ~ 0). Cheap: one monotonic() + a few floats."""
+        ptp = self.__ts_to_float(ts)
+        raw = ptp - time.monotonic()
+        est = self.__ptp_mono_offset
+        if est is None or raw > est:
+            est = raw
+        else:
+            est -= self.__ptp_mono_offset_leak
+        self.__ptp_mono_offset = est
+        return ptp - est
 
     def __get_states(self) -> tuple[np.ndarray | None, dict | None]:
         if self.__arm is None:
