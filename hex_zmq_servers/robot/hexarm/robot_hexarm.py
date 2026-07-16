@@ -160,6 +160,11 @@ class HexRobotHexarm(HexRobotBase):
         # the arm parks. Matching control_hz frees the GIL for the read thread.
         self.__work_loop_hz = float(
             robot_config.get("work_loop_hz", 2000.0))
+        # Emit a state frame when the arm and gripper sample timestamps are within this
+        # tolerance (was an exact <1ns match that dropped a whole cycle on any misalignment).
+        # A slow 1-DOF gripper a few ms stale is harmless; default 1.5 control periods.
+        self.__ts_pair_tol_ms = float(
+            robot_config.get("ts_pair_tol_ms", 1.5 * 1000.0 / control_hz))
 
         # Gravity feedforward (opt-in). MIT commands here carry zero torque
         # feedforward, so position-only commands settle below target by g/kp and
@@ -645,7 +650,7 @@ class HexRobotHexarm(HexRobotBase):
                 'ts'] if self.__gripper is not None else arm_ts
 
             delta_ms = hex_ts_delta_ms(arm_ts, gripper_ts)
-            if np.fabs(delta_ms) < 1e-6:
+            if np.fabs(delta_ms) < self.__ts_pair_tol_ms:
                 pos = self.__arm_state_buffer['pos']
                 vel = self.__arm_state_buffer['vel']
                 eff = self.__arm_state_buffer['eff']
