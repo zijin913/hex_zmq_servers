@@ -383,6 +383,12 @@ class HexRobotHexarm(HexRobotBase):
         self.__pub_thread_on = ((bool(_os.environ.get("SODA_PUB_THREAD")) or _rt_on)
                                 and self.__state_pub is not None)
         self.__pub_rt = _rt_on
+        # SODA_EMIT_STATS: source-side emit-rate diagnostic — device-read vs PUB-send /s
+        # (pub_send < device_read => publisher coalescing; device_read < ~500 => SDK/work-loop limit).
+        self.__emit_stats = bool(_os.environ.get("SODA_EMIT_STATS"))
+        self.__fresh_n = 0
+        self.__emit_n = 0
+        self.__emit_t0 = _time.perf_counter()
         if self.__pub_thread_on:
             self.__pub_cv = _threading.Condition()
             self.__pub_slot = None
@@ -404,6 +410,8 @@ class HexRobotHexarm(HexRobotBase):
                 self.__last_q = states[arm_ids, 0]
                 if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
+                    if self.__emit_stats:
+                        self.__fresh_n += 1
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
                     # Re-anchor the PUB device_ts from the arm PTP clock to host
@@ -455,6 +463,8 @@ class HexRobotHexarm(HexRobotBase):
                         self.__state_pub.publish(self.__pub_side, pub_ts,
                                                  states[:, 0], states[:, 1], states[:, 2],
                                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
+                        if self.__emit_stats:
+                            self.__count_emit()
 
             # cmds
             cmds_pack = None
@@ -556,11 +566,22 @@ class HexRobotHexarm(HexRobotBase):
         coalescing). Keeps the ~0.5 ms serialize/encode/send off the 1 kHz path."""
         if self.__pub_rt:
             # RT path: keep the feedback publisher OFF the isolated control cores
-            # (6,7); FIFO-40 on housekeeping cores 0-5 -> responsive without ever
+            # (6,7) NOR the reserved arm-NIC-IRQ core; FIFO-40 on the housekeeping
+            # cores (all minus isolcpus) -> responsive without ever
             # preempting the control loop. Guarded (never crash the publisher).
             try:
                 import os as _os
-                _os.sched_setaffinity(0, {0, 1, 2, 3, 4, 5})
+                _iso = set()
+                try:
+                    for _p in open("/sys/devices/system/cpu/isolated").read().strip().split(","):
+                        if "-" in _p:
+                            _a, _b = _p.split("-"); _iso.update(range(int(_a), int(_b) + 1))
+                        elif _p:
+                            _iso.add(int(_p))
+                except Exception:
+                    pass
+                _hk = {c for c in range(_os.cpu_count() or 1) if c not in _iso} or {0}
+                _os.sched_setaffinity(0, _hk)
                 _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(40))
             except Exception as e:
                 print(f"[hexarm] pub_worker RT setup failed ({e})")
@@ -609,6 +630,23 @@ class HexRobotHexarm(HexRobotBase):
         self.__state_pub.publish(self.__pub_side, ts,
                                  states[:, 0], states[:, 1], states[:, 2],
                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
+        if self.__emit_stats:
+            self.__count_emit()
+
+    def __count_emit(self):
+        """SODA_EMIT_STATS: print source-side rates once/sec. device_read = fresh device
+        frames the hot loop saw; pub_send = frames actually serialized + PUB-sent. pub_send
+        < device_read => the publisher is coalescing (serialize/send can't keep up under
+        load); device_read < ~500 => the SDK read / work loop is the limit, not a consumer."""
+        self.__emit_n += 1
+        _now = time.perf_counter()
+        _dt = _now - self.__emit_t0
+        if _dt >= 1.0:
+            print(f"[emit] {self.__pub_side}: device_read={self.__fresh_n / _dt:6.1f}/s  "
+                  f"pub_send={self.__emit_n / _dt:6.1f}/s", flush=True)
+            self.__fresh_n = 0
+            self.__emit_n = 0
+            self.__emit_t0 = _now
 
     def __ptp_to_mono(self, ts):
         """Re-express an arm-clock (PTP) device timestamp in the host CLOCK_MONOTONIC
