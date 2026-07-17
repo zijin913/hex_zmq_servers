@@ -675,6 +675,14 @@ class HexRobotHexarm(HexRobotBase):
         so the ZMQ clients see an uninterrupted state/command path across an SDK
         crash. Returns the handshake dict."""
         with self.__io_lock:
+            # pin the device-io SDK to its own isolated core (left->4 / right->5,
+            # disjoint from the MAIN control loop on 6/7) when the RT partition is
+            # active, so the SDK _periodic/KCP never contend the cameras on the
+            # general cores (that contention capped the firmware report rate).
+            if os.environ.get("SODA_RT_CONTROL"):
+                _dc = os.environ.get("SODA_RT_DEVICE_CORE")
+                self.__io_cfg["device_io_cpu"] = (
+                    int(_dc) if _dc else (4 if self.__pub_side == "left" else 5))
             init_q = _MP.Queue()
             self.__io_proc = _MP.Process(
                 target=run_device_io,

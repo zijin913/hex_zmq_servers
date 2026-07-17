@@ -43,6 +43,24 @@ def _concat(a, g, key):
     return np.concatenate([a[key], g[key]]) if g is not None else np.asarray(a[key])
 
 
+def _pin_affinity(cpu: int) -> int:
+    """Pin ALL threads of THIS process (incl. the SDK's _periodic watchdog-feed +
+    KCP send/recv) to a single isolated core. The isolated core (isolcpus) has no
+    other runnable work, so those threads never contend the RealSense cameras +
+    main compute on the general cores. Best-effort; returns the count pinned."""
+    n = 0
+    try:
+        for tid in os.listdir("/proc/self/task"):
+            try:
+                os.sched_setaffinity(int(tid), {int(cpu)})
+                n += 1
+            except (PermissionError, OSError):
+                pass
+    except Exception:
+        pass
+    return n
+
+
 def _set_rt_priority(prio: int) -> int:
     """Best-effort SCHED_FIFO on ALL threads of THIS process — including the SDK's
     _periodic watchdog-feed + KCP send/recv threads, which live here now (#6).
@@ -132,6 +150,16 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     # saturation, meeting the 1ms watchdog-feed deadline. Best-effort.
     rt_prio = int(cfg.get('device_io_rt_prio', 20))
     _n_rt = _set_rt_priority(rt_prio)
+    # #6 + RT: pin all device-io threads to a dedicated isolated core (device_io_cpu,
+    # left->4 / right->5, disjoint from the control loop on 6/7) so the SDK never
+    # contends the cameras on the general cores -- that cross-core contention had
+    # throttled the firmware report rate to ~418Hz. Best-effort.
+    _cpu_pin = cfg.get('device_io_cpu')
+    if _cpu_pin is not None:
+        _n_pin = _pin_affinity(int(_cpu_pin))
+        if _n_pin > 0:
+            print("[device_io] pinned %d threads -> isolated core %d"
+                  % (_n_pin, int(_cpu_pin)), flush=True)
     if _n_rt > 0:
         print(f"\033[36m[device_io] RT SCHED_FIFO prio={rt_prio} on {_n_rt} "
               f"threads\033[0m", flush=True)
