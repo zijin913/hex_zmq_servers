@@ -162,6 +162,9 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     last_fault = 0.0
     last_state = 0.0
     sens_ts = bool(cfg.get('sens_ts', True))
+    # arm/gripper timestamp pairing tolerance (mirrors robot_hexarm c97f5ac): the old exact
+    # <1ns match dropped a whole cycle on any misalignment -> ~410Hz cap with a gripper.
+    ts_pair_tol = float(cfg.get('ts_pair_tol_ms', 1.5 * 1000.0 / cfg['control_hz']))
     # Tight but not busy: poll a bit faster than the report rate so we never
     # miss a fresh state frame or a fresh command, without burning a core.
     poll_hz = float(cfg.get('device_io_poll_hz', 2.0 * cfg['control_hz']))
@@ -245,7 +248,7 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                     g_ts = g['ts'] if g is not None else a_ts
                     if _diag:
                         _d_read += 1
-                    if abs(hex_ts_delta_ms(a_ts, g_ts)) < 1e-6:
+                    if abs(hex_ts_delta_ms(a_ts, g_ts)) < ts_pair_tol:
                         if _diag:
                             _d_pub += 1
                         pos = _concat(a, g, 'pos')
