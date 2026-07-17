@@ -559,7 +559,19 @@ class HexRobotHexarm(HexRobotBase):
                       f"(housekeeping), SCHED_FIFO-40")
             except Exception as e:
                 print(f"[hexarm] pub_worker RT setup failed ({e})")
-        rate = HexRate(self.__work_loop_hz)
+        # Oversample the seqlock poll, DECOUPLED from the control rate. Polling at
+        # the same rate as the control loop makes two independent same-rate timers
+        # beat: with any jitter the pub wake drifts across the control write, so
+        # some ticks see no new frame (idle) and some see two (drop one) -> ~5-10%
+        # discard, worst at 500 Hz control. Polling >=2x control (>=1 kHz floor)
+        # guarantees the pub checks the slot at least twice per control frame and
+        # catches every one regardless of phase. Costs nothing on the RT control
+        # loop (only this non-RT thread spins a bit faster). SODA_PUB_HZ overrides.
+        _phz = os.environ.get("SODA_PUB_HZ")
+        pub_hz = float(_phz) if _phz else max(2.0 * self.__work_loop_hz, 1000.0)
+        print(f"[hexarm] pub_worker poll {pub_hz:.0f} Hz "
+              f"(control {self.__work_loop_hz:.0f} Hz)", flush=True)
+        rate = HexRate(pub_hz)
         last_tag, pub_n, disc = -1, 0, 0
         while not self.__pub_stop.is_set():
             slot = self.__pub_slot           # atomic read of the latest (GIL)
