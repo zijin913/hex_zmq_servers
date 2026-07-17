@@ -128,19 +128,13 @@ class HexRobotHexarm(HexRobotBase):
         # the device loop rate (alongside the REQ/REP get_states path). NON-BLOCKING:
         # a slow/absent subscriber drops frames and never stalls this control loop.
         self.__pub_side = str(robot_config.get("side", "arm"))
-        # arm-PTP -> host-monotonic offset for the PUB device_ts (see __ptp_to_mono);
-        # lazy-init on the first frame, then a decaying-max filter tracks slow PTP drift.
-        self.__ptp_mono_offset = None
-        self.__ptp_mono_offset_leak = 1e-7   # ~50 us/s decay @ 500 Hz
-        self.__ts_to_float = None
         self.__state_pub = None
         self.__ee_fk = None
         _pub_port = robot_config.get("pub_port")
         if _pub_port:
             try:
-                from ..state_pub import StatePublisher, _ts_to_float
+                from ..state_pub import StatePublisher
                 self.__state_pub = StatePublisher(int(_pub_port))
-                self.__ts_to_float = _ts_to_float
                 print(f"\033[36m[hexarm] state PUB on :{int(_pub_port)} "
                       f"(side={self.__pub_side})\033[0m")
             except Exception as e:
@@ -160,11 +154,6 @@ class HexRobotHexarm(HexRobotBase):
         # the arm parks. Matching control_hz frees the GIL for the read thread.
         self.__work_loop_hz = float(
             robot_config.get("work_loop_hz", 2000.0))
-        # Emit a state frame when the arm and gripper sample timestamps are within this
-        # tolerance (was an exact <1ns match that dropped a whole cycle on any misalignment).
-        # A slow 1-DOF gripper a few ms stale is harmless; default 1.5 control periods.
-        self.__ts_pair_tol_ms = float(
-            robot_config.get("ts_pair_tol_ms", 1.5 * 1000.0 / control_hz))
 
         # Gravity feedforward (opt-in). MIT commands here carry zero torque
         # feedforward, so position-only commands settle below target by g/kp and
@@ -383,15 +372,9 @@ class HexRobotHexarm(HexRobotBase):
         self.__pub_thread_on = ((bool(_os.environ.get("SODA_PUB_THREAD")) or _rt_on)
                                 and self.__state_pub is not None)
         self.__pub_rt = _rt_on
-        # SODA_EMIT_STATS: source-side emit-rate diagnostic — device-read vs PUB-send /s
-        # (pub_send < device_read => publisher coalescing; device_read < ~500 => SDK/work-loop limit).
-        self.__emit_stats = bool(_os.environ.get("SODA_EMIT_STATS"))
-        self.__fresh_n = 0
-        self.__emit_n = 0
-        self.__emit_t0 = _time.perf_counter()
         if self.__pub_thread_on:
-            self.__pub_cv = _threading.Condition()
-            self.__pub_slot = None
+            self.__pub_slot = None     # (tag, ts, states) — GIL-atomic latest-wins
+            self.__pub_tag = 0         # monotonic control-cycle tag (seqlock)
             self.__pub_stop = _threading.Event()
             _threading.Thread(target=self.__pub_worker, name="pub_worker",
                               daemon=True).start()
@@ -410,21 +393,16 @@ class HexRobotHexarm(HexRobotBase):
                 self.__last_q = states[arm_ids, 0]
                 if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
-                    if self.__emit_stats:
-                        self.__fresh_n += 1
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
-                    # Re-anchor the PUB device_ts from the arm PTP clock to host
-                    # CLOCK_MONOTONIC so host_ts - device_ts is a true sensor->host
-                    # latency, not a clock-domain offset. REQ/REP keeps the raw PTP ts.
-                    pub_ts = self.__ptp_to_mono(ts) if self.__state_pub is not None else ts
                     # High-rate PUB broadcast of this fresh frame (non-blocking).
                     if self.__state_pub is not None and self.__pub_thread_on:
-                        # Hand off to the non-RT publisher thread (cheap copy +
-                        # notify); serialize/encode/send runs OFF this hot loop.
-                        with self.__pub_cv:
-                            self.__pub_slot = (pub_ts, states.copy())
-                            self.__pub_cv.notify()
+                        # Lock-free seqlock handoff: ONE atomic tuple assign
+                        # (GIL-atomic) with a monotonic control-cycle tag. No lock
+                        # / CV on the hot loop; the timer-driven pub_worker reads
+                        # the latest slot at its own rate and publishes it.
+                        self.__pub_tag += 1
+                        self.__pub_slot = (self.__pub_tag, ts, states.copy())
                     elif self.__state_pub is not None:
                         # The ESTIMATE layer (pinocchio: gravity, FK, Jacobian) is computed
                         # ONLY when a client is subscribed to that topic — it stays OFF this
@@ -460,11 +438,9 @@ class HexRobotHexarm(HexRobotBase):
                                     states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
                             except Exception:
                                 ee_wrench = None
-                        self.__state_pub.publish(self.__pub_side, pub_ts,
+                        self.__state_pub.publish(self.__pub_side, ts,
                                                  states[:, 0], states[:, 1], states[:, 2],
                                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
-                        if self.__emit_stats:
-                            self.__count_emit()
 
             # cmds
             cmds_pack = None
@@ -552,51 +528,49 @@ class HexRobotHexarm(HexRobotBase):
                 _idx["l"] += 1
             rate.sleep()
 
-        # stop the PUB worker before teardown
+        # stop the PUB worker before teardown (timer loop exits within one tick)
         if self.__pub_thread_on:
             self.__pub_stop.set()
-            with self.__pub_cv:
-                self.__pub_cv.notify()
         # close
         self.close()
 
     def __pub_worker(self):
-        """Non-RT publisher: drain the latest state frame handed off by the hot
-        control loop and run __do_publish OFF that thread (latest-wins /
-        coalescing). Keeps the ~0.5 ms serialize/encode/send off the 1 kHz path."""
+        """Timer-driven non-RT publisher (seqlock + tag): runs at its OWN rate
+        (control_hz), reads the latest slot (tag, ts, states) written lock-free by
+        the control loop, and publishes the LAST control cycle each tick. Skips
+        when the tag has not advanced (no new frame); a tag GAP is a discard, so
+        the coalescing is now explicit + observable ([PUBTAG]). Serialize/encode/
+        send stays entirely off the 1 kHz control loop."""
         if self.__pub_rt:
-            # RT path: keep the feedback publisher OFF the isolated control cores
-            # (6,7) NOR the reserved arm-NIC-IRQ core; FIFO-40 on the housekeeping
-            # cores (all minus isolcpus) -> responsive without ever
-            # preempting the control loop. Guarded (never crash the publisher).
+            # Dedicated pub core (SODA_PUB_CORE, else side-derived left->4 /
+            # right->5), kept OFF the isolated control cores; FIFO-40. Guarded.
             try:
                 import os as _os
-                _iso = set()
-                try:
-                    for _p in open("/sys/devices/system/cpu/isolated").read().strip().split(","):
-                        if "-" in _p:
-                            _a, _b = _p.split("-"); _iso.update(range(int(_a), int(_b) + 1))
-                        elif _p:
-                            _iso.add(int(_p))
-                except Exception:
-                    pass
-                _hk = {c for c in range(_os.cpu_count() or 1) if c not in _iso} or {0}
-                _os.sched_setaffinity(0, _hk)
+                _pc = _os.environ.get("SODA_PUB_CORE")
+                _core = int(_pc) if _pc else (4 if self.__pub_side == "left" else 5)
+                _os.sched_setaffinity(0, {_core})
                 _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(40))
+                print(f"[hexarm] pub_worker -> core {_core}, SCHED_FIFO-40")
             except Exception as e:
                 print(f"[hexarm] pub_worker RT setup failed ({e})")
+        rate = HexRate(self.__work_loop_hz)
+        last_tag, pub_n, disc = -1, 0, 0
         while not self.__pub_stop.is_set():
-            with self.__pub_cv:
-                while self.__pub_slot is None and not self.__pub_stop.is_set():
-                    self.__pub_cv.wait(0.1)
-                if self.__pub_stop.is_set():
-                    return
-                ts, states = self.__pub_slot
-                self.__pub_slot = None
-            try:
-                self.__do_publish(ts, states)
-            except Exception as e:
-                print(f"\033[91m[hexarm] pub_worker error: {e}\033[0m")
+            slot = self.__pub_slot           # atomic read of the latest (GIL)
+            if slot is not None and slot[0] != last_tag:
+                if last_tag >= 0 and slot[0] > last_tag + 1:
+                    disc += slot[0] - last_tag - 1
+                last_tag = slot[0]
+                try:
+                    self.__do_publish(slot[1], slot[2])
+                    pub_n += 1
+                    if pub_n % 5000 == 0:
+                        _tot = pub_n + disc
+                        print(f"[PUBTAG] published={pub_n} discarded={disc} "
+                              f"({disc / _tot * 100:.1f}%)", flush=True)
+                except Exception as e:
+                    print(f"\033[91m[hexarm] pub_worker error: {e}\033[0m")
+            rate.sleep()
 
     def __do_publish(self, ts, states):
         """Serialize + (subscriber-gated pinocchio) estimate + PUB-send one state
@@ -630,43 +604,6 @@ class HexRobotHexarm(HexRobotBase):
         self.__state_pub.publish(self.__pub_side, ts,
                                  states[:, 0], states[:, 1], states[:, 2],
                                  tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
-        if self.__emit_stats:
-            self.__count_emit()
-
-    def __count_emit(self):
-        """SODA_EMIT_STATS: print source-side rates once/sec. device_read = fresh device
-        frames the hot loop saw; pub_send = frames actually serialized + PUB-sent. pub_send
-        < device_read => the publisher is coalescing (serialize/send can't keep up under
-        load); device_read < ~500 => the SDK read / work loop is the limit, not a consumer."""
-        self.__emit_n += 1
-        _now = time.perf_counter()
-        _dt = _now - self.__emit_t0
-        if _dt >= 1.0:
-            print(f"[emit] {self.__pub_side}: device_read={self.__fresh_n / _dt:6.1f}/s  "
-                  f"pub_send={self.__emit_n / _dt:6.1f}/s", flush=True)
-            self.__fresh_n = 0
-            self.__emit_n = 0
-            self.__emit_t0 = _now
-
-    def __ptp_to_mono(self, ts):
-        """Re-express an arm-clock (PTP) device timestamp in the host CLOCK_MONOTONIC
-        base so a downstream ``host_ts - device_ts`` is a real sensor->host latency, not
-        a clock-domain offset. The arm firmware stamps samples on its PTP hardware clock
-        (hex_device_api) while the host publishes host_ts on ``time.monotonic()`` — two
-        epochs. ``ptp - monotonic`` = OFFSET - read_age <= OFFSET, so a decaying-max over
-        it recovers the constant OFFSET from the least-delayed sample (scheduling delays
-        only shrink the term, so the max is robust to them); the slow leak tracks PTP
-        drift. Subtract OFFSET -> device_ts in the monotonic base. No-op when the arm
-        falls back to a host clock (OFFSET ~ 0). Cheap: one monotonic() + a few floats."""
-        ptp = self.__ts_to_float(ts)
-        raw = ptp - time.monotonic()
-        est = self.__ptp_mono_offset
-        if est is None or raw > est:
-            est = raw
-        else:
-            est -= self.__ptp_mono_offset_leak
-        self.__ptp_mono_offset = est
-        return ptp - est
 
     def __get_states(self) -> tuple[np.ndarray | None, dict | None]:
         if self.__arm is None:
@@ -688,7 +625,7 @@ class HexRobotHexarm(HexRobotBase):
                 'ts'] if self.__gripper is not None else arm_ts
 
             delta_ms = hex_ts_delta_ms(arm_ts, gripper_ts)
-            if np.fabs(delta_ms) < self.__ts_pair_tol_ms:
+            if np.fabs(delta_ms) < 1e-6:
                 pos = self.__arm_state_buffer['pos']
                 vel = self.__arm_state_buffer['vel']
                 eff = self.__arm_state_buffer['eff']
