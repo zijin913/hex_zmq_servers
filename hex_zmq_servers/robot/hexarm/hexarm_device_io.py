@@ -195,7 +195,10 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     ts_pair_tol = float(cfg.get('ts_pair_tol_ms', 1.5 * 1000.0 / cfg['control_hz']))
     # Tight but not busy: poll a bit faster than the report rate so we never
     # miss a fresh state frame or a fresh command, without burning a core.
-    poll_hz = float(cfg.get('device_io_poll_hz', 2.0 * cfg['control_hz']))
+    # NOTE: poll at 1x control_hz, NOT 2x. Polling faster spins this loop's GIL and
+    # STARVES the SDK's own KCP-recv thread (same process/GIL) -> fewer frames surface
+    # -> ~380-416Hz. Mirrors the single-process work_loop_hz=control_hz fix (470->496).
+    poll_hz = float(cfg.get('device_io_poll_hz', 1.0 * cfg['control_hz']))
     period = 1.0 / max(poll_hz, 1.0)
     # get_status_summary() is a FULL SDK status query — far heavier than the
     # pos/vel/eff read. It is a latched park indicator, so throttle it well below
