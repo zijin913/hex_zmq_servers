@@ -546,11 +546,17 @@ class HexRobotHexarm(HexRobotBase):
             # right->5), kept OFF the isolated control cores; FIFO-40. Guarded.
             try:
                 import os as _os
+                # The PUB does ZMQ (network) I/O, so it MUST stay on a HOUSEKEEPING
+                # core. isolcpus/nohz_full/irqaffinity=0-3 strip softirq/network
+                # processing from the isolated cores (4-7) -> a pub pinned there
+                # STALLS its sends. Default to the housekeeping range {0,1,2,3};
+                # SODA_PUB_CORE can override with a single housekeeping core.
                 _pc = _os.environ.get("SODA_PUB_CORE")
-                _core = int(_pc) if _pc else (4 if self.__pub_side == "left" else 5)
-                _os.sched_setaffinity(0, {_core})
+                _cores = {int(_pc)} if _pc else {0, 1, 2, 3}
+                _os.sched_setaffinity(0, _cores)
                 _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(40))
-                print(f"[hexarm] pub_worker -> core {_core}, SCHED_FIFO-40")
+                print(f"[hexarm] pub_worker -> cores {sorted(_cores)} "
+                      f"(housekeeping), SCHED_FIFO-40")
             except Exception as e:
                 print(f"[hexarm] pub_worker RT setup failed ({e})")
         rate = HexRate(self.__work_loop_hz)
