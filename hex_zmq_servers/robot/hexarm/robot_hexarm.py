@@ -246,11 +246,11 @@ class HexRobotHexarm(HexRobotBase):
             # lowering it never risks a park; lowering it FREES the shared GIL for
             # _periodic. 1.0x the report rate is plenty given the cheap cmd_seq peek.
             "device_io_poll_hz": float(robot_config.get(
-                "device_io_poll_hz", 1.0 * control_hz)),
+                "device_io_poll_hz", max(2.0 * control_hz, 1000.0))),
             # STATE read + PUB run slower than the poll loop (CMD pickup stays at
             # poll cadence) — 500Hz still far exceeds every STATE consumer.
             "device_io_state_hz": float(robot_config.get(
-                "device_io_state_hz", 500.0)),
+                "device_io_state_hz", max(2.0 * control_hz, 1000.0))),
             # get_status_summary() is a heavy full SDK query — throttle it (latched
             # park indicator, a few tens of ms of detection latency is fine).
             "device_io_fault_hz": float(robot_config.get(
