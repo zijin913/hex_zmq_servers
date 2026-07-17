@@ -24,6 +24,17 @@ from hex_robo_utils import (
 from hex_device import HexDeviceApi, Arm, Hands
 from hex_device.motor_base import CommandType
 
+# #6: SDK-isolation process — the HexDeviceApi (_periodic watchdog-feed + KCP)
+# now runs in a SEPARATE process so its 1ms send never loses the GIL to this
+# process's pinocchio/FK/PUB compute (the control_hz=1000 park root cause).
+import multiprocessing as mp
+from . import hexarm_shmem as SHM
+from .hexarm_device_io import run_device_io, GRIP_POSITION, GRIP_LIMP, GRIP_GATED
+
+# spawn context: the child re-imports fresh (no inherited pinocchio/numpy/SDK
+# state) and the SDK is spawn-safe (verified on real HW).
+_MP = mp.get_context("spawn")
+
 ROBOT_CONFIG = {
     "device_ip": "172.18.8.161",
     "device_port": 8439,
@@ -127,33 +138,25 @@ class HexRobotHexarm(HexRobotBase):
         # tick for clients that want push-based, selectively-subscribable feedback at
         # the device loop rate (alongside the REQ/REP get_states path). NON-BLOCKING:
         # a slow/absent subscriber drops frames and never stalls this control loop.
+        # #6 opt (方案2): the state PUB moved into the device-I/O process so the
+        # state stream is RT-steady (not jittery like this non-RT process). This
+        # process no longer creates/uses a StatePublisher — it just remembers
+        # pub_port/side to hand to the child. Dropping the main-process publish
+        # also removes the per-fresh-frame pinocchio-tau_ext + FK + 5x zmq that
+        # used to run in work_loop here (extra jitter + CPU gone).
         self.__pub_side = str(robot_config.get("side", "arm"))
+        self.__pub_port = robot_config.get("pub_port")
         self.__state_pub = None
         self.__ee_fk = None
-        _pub_port = robot_config.get("pub_port")
-        if _pub_port:
-            try:
-                from ..state_pub import StatePublisher
-                self.__state_pub = StatePublisher(int(_pub_port))
-                print(f"\033[36m[hexarm] state PUB on :{int(_pub_port)} "
-                      f"(side={self.__pub_side})\033[0m")
-            except Exception as e:
-                print(f"\033[33m[hexarm] state PUB disabled: {e}\033[0m")
-            # EE pose topic (<side>/ee_pose): link_6 in the arm base frame, quat xyzw.
-            # Same gr100.urdf-based FK as the sim device -> identical conventions.
-            try:
-                from ..ee_fk import EEPoseFK
-                self.__ee_fk = EEPoseFK()
-            except Exception as e:
-                print(f"\033[33m[hexarm] ee topic disabled: {e}\033[0m")
 
-        # work_loop spin rate. Default 2000Hz oversamples 4x — arm state only
-        # updates at the report rate (~control_hz). That wasted spinning is a
-        # pure-Python GIL hog that starves the SDK's websocket-read thread in
-        # the same process, so the controller can't push frames (ENOBUFS) and
-        # the arm parks. Matching control_hz frees the GIL for the read thread.
+        # work_loop spin rate. Post-#6 this loop only copies the freshest seqlock
+        # STATE frame into states_queue + forwards fresh CMD-slot commands; the SDK
+        # read/_periodic threads (whose in-process GIL starvation used to park the
+        # arm) now live in the separate device-io process. State refreshes at only
+        # <= device_io_state_hz, so 2000Hz was pure oversampling — default to
+        # control_hz. (An explicit work_loop_hz in a cfg still overrides.)
         self.__work_loop_hz = float(
-            robot_config.get("work_loop_hz", 2000.0))
+            robot_config.get("work_loop_hz", control_hz))
 
         # Gravity feedforward (opt-in). MIT commands here carry zero torque
         # feedforward, so position-only commands settle below target by g/kp and
@@ -218,57 +221,61 @@ class HexRobotHexarm(HexRobotBase):
                 print(f"\033[91m[hexarm] pinocchio init failed: {e}\033[0m")
                 self.__gravity_comp = False
 
-        # variables
-        # hex_arm variables
-        self.__hex_api: HexDeviceApi | None = None
-        self.__arm: Arm | None = None
-        self.__gripper: Hands | None = None
+        # ---- #6: spawn the SDK-isolation device-I/O process --------------
+        # The HexDeviceApi (arm + gripper) no longer lives in THIS process; it
+        # runs in run_device_io on its own GIL so the 1ms _periodic watchdog
+        # feed never loses the GIL to the pinocchio/FK/PUB compute below (the
+        # control_hz=1000 park root cause). We talk to it over two seqlock
+        # shmem slots (hot path) + a Queue (one-time dof/limits handshake) +
+        # two Values (clear-fault request / fault-status readback). spawn (not
+        # fork) — the SDK is spawn-safe (verified) and a fresh child avoids
+        # inheriting this process's pinocchio/numpy state.
+        _uid = f"{self.__pub_side}_{os.getpid()}"
+        self.__state_name = f"hexarm_state_{_uid}"
+        self.__cmd_name = f"hexarm_cmd_{_uid}"
+        self.__state_slot = SHM.ShmemSlot(self.__state_name, SHM.STATE_LEN, owner=True)
+        self.__cmd_slot = SHM.ShmemSlot(self.__cmd_name, SHM.CMD_LEN, owner=True)
+        self.__cmd_seq = 0
+        self.__io_cfg = {
+            "device_ip": device_ip, "device_port": device_port,
+            "control_hz": control_hz, "arm_type": arm_type,
+            "gripper_max_position": robot_config.get("gripper_max_position"),
+            "sens_ts": self.__sens_ts,
+            # Poll loop governs CMD-pickup latency (commands arrive <=~250Hz) — it
+            # is NOT the firmware watchdog feed (that is the SDK's own _periodic), so
+            # lowering it never risks a park; lowering it FREES the shared GIL for
+            # _periodic. 1.0x the report rate is plenty given the cheap cmd_seq peek.
+            "device_io_poll_hz": float(robot_config.get(
+                "device_io_poll_hz", 1.0 * control_hz)),
+            # STATE read + PUB run slower than the poll loop (CMD pickup stays at
+            # poll cadence) — 500Hz still far exceeds every STATE consumer.
+            "device_io_state_hz": float(robot_config.get(
+                "device_io_state_hz", 500.0)),
+            # get_status_summary() is a heavy full SDK query — throttle it (latched
+            # park indicator, a few tens of ms of detection latency is fine).
+            "device_io_fault_hz": float(robot_config.get(
+                "device_io_fault_hz", 20.0)),
+            # #6 opt: state PUB runs in the device-io (RT-steady); pass it down.
+            "pub_port": self.__pub_port,
+            "side": self.__pub_side,
+            "device_io_rt_prio": int(robot_config.get("device_io_rt_prio", 20)),
+        }
+        self.__io_stop = _MP.Event()
+        self.__io_clear_req = _MP.Value('i', 0)
+        self.__io_fault = _MP.Value('d', 0.0)
+        self.__io_proc = None
+        self.__io_lock = threading.Lock()   # serialize (re)spawn
+        hs = self.__spawn_device_io()        # blocks on the dof/limits handshake
 
-        # buffer
-        self.__arm_state_buffer: dict | None = None
-        self.__gripper_state_buffer: dict | None = None
-
-        # open device
-        self.__hex_api = HexDeviceApi(
-            ws_url=f"ws://{device_ip}:{device_port}",
-            control_hz=control_hz,
-        )
-
-        # open arm
-        while self.__hex_api.find_device_by_robot_type(arm_type) is None:
-            print("\033[33mArm not found\033[0m")
-            time.sleep(1)
-        self.__arm = self.__hex_api.find_device_by_robot_type(arm_type)
-        self.__arm.start()
-
-        # try to open gripper
-        self.__gripper = self.__hex_api.find_optional_device_by_id(1)
-        if self.__gripper is None:
-            print("\033[33mGripper not found\033[0m")
-        else:
-            # Override SDK's hardcoded gripper position limit if requested.
-            # hex_device SDK ships GR100 with [0, 0.57] which is conservative;
-            # real hardware can rotate further before mechanical stop.
-            # Set robot_config["gripper_max_position"] to bypass the SDK clamp.
-            gmax = robot_config.get("gripper_max_position")
-            if gmax is not None:
-                try:
-                    self.__gripper._hands_limit[1] = float(gmax)
-                    print(f"\033[33m[hexarm] gripper limit override: upper={float(gmax)}\033[0m")
-                except (AttributeError, IndexError) as e:
-                    print(f"\033[33m[hexarm] failed to override gripper limit: {e}\033[0m")
-
-        # variables init
-        arm_dofs = len(self.__arm)
+        # ---- dof / limits from the handshake (was queried off the SDK here) --
+        arm_dofs = int(hs["arm_dofs"])
         self._dofs = [arm_dofs]
-        self._limits = np.array(self.__arm.get_joint_limits()).reshape(
-            -1, 3, 2)
+        self._limits = np.array(hs["arm_limits"]).reshape(-1, 3, 2)
         self.__motor_idx = {"robot_arm": np.arange(arm_dofs).tolist()}
-        if self.__gripper is not None:
-            gripper_dofs = len(self.__gripper)
+        if hs.get("gripper_dofs"):
+            gripper_dofs = int(hs["gripper_dofs"])
             self._dofs.append(gripper_dofs)
-            gripper_limits = np.array(
-                self.__gripper.get_joint_limits()).reshape(-1, 3, 2)
+            gripper_limits = np.array(hs["gripper_limits"]).reshape(-1, 3, 2)
             self._limits = np.concatenate([self._limits, gripper_limits],
                                           axis=0)
             self.__motor_idx["robot_gripper"] = (np.arange(gripper_dofs) +
@@ -320,6 +327,7 @@ class HexRobotHexarm(HexRobotBase):
         idle_target = None     # latched pose held while idle (fixed, not chased)
         last_send_ts = hex_ts_now()
         last_real_cmd_ts = hex_ts_now()  # last FRESH client command (safe-stop timer)
+        last_io_check = hex_ts_now()     # #6: device-io liveness poll throttle
         rate = HexRate(self.__work_loop_hz)
         # --- optional hot-loop profiler (SODA_LOOP_PROFILE=1): per-stage SDK
         # call latency (read = get_simple_motor_status, write = __set_cmds ->
@@ -379,6 +387,20 @@ class HexRobotHexarm(HexRobotBase):
             _threading.Thread(target=self.__pub_worker, name="pub_worker",
                               daemon=True).start()
         while self._working.is_set() and not stop_event.is_set():
+            # #6: respawn the device-I/O process if the SDK crashed (a segfault
+            # on churn killed the arm before). Throttled to ~5Hz; reattaches to
+            # the same shmem slots so ZMQ clients don't see a gap.
+            if hex_ts_delta_ms(hex_ts_now(), last_io_check) > 200.0:
+                last_io_check = hex_ts_now()
+                if self.__io_proc is not None and not self.__io_proc.is_alive():
+                    print("\033[91m[hexarm] device-io died -> respawning\033[0m",
+                          flush=True)
+                    try:
+                        self.__spawn_device_io()
+                    except Exception as e:
+                        print(f"\033[91m[hexarm] device-io respawn failed: {e}\033[0m",
+                              flush=True)
+
             # states
             _t0 = _time.perf_counter_ns() if _prof_on else 0
             ts, states = self.__get_states()
@@ -395,60 +417,17 @@ class HexRobotHexarm(HexRobotBase):
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
                     states_count = (states_count + 1) % self._max_seq_num
-                    # High-rate PUB broadcast of this fresh frame (non-blocking).
-                    if self.__state_pub is not None and self.__pub_thread_on:
-                        # Lock-free seqlock handoff: ONE atomic tuple assign
-                        # (GIL-atomic) with a monotonic control-cycle tag. No lock
-                        # / CV on the hot loop; the timer-driven pub_worker reads
-                        # the latest slot at its own rate and publishes it.
-                        self.__pub_tag += 1
-                        self.__pub_slot = (self.__pub_tag, ts, states.copy())
-                    elif self.__state_pub is not None:
-                        # The ESTIMATE layer (pinocchio: gravity, FK, Jacobian) is computed
-                        # ONLY when a client is subscribed to that topic — it stays OFF this
-                        # GIL-shared work loop (SDK read thread) when nobody is watching, like
-                        # the camera JPEG encode. pos/vel/eff/joint_states are cheap slices and
-                        # are always published (ZMQ drops them if unsubscribed).
-                        _sd = self.__pub_side
-                        sp = self.__state_pub
-                        sub_tau = sp.has_subscriber(f"{_sd}/tau_ext".encode())
-                        sub_wrench = sp.has_subscriber(f"{_sd}/wrench".encode())
-                        sub_ee = sp.has_subscriber(f"{_sd}/ee_pose".encode())
-                        # tau_ext (measured effort − modeled gravity): a motor-current + model
-                        # ESTIMATE, NOT an F/T sensor. Needed for /tau_ext AND /wrench.
-                        tau_ext = None
-                        if self.__pin is not None and (sub_tau or sub_wrench):
-                            try:
-                                tau_ext = states[:, 2].astype(np.float64).copy()
-                                tau_ext[arm_ids] -= self.__gravity_fn(states[arm_ids, 0])
-                            except Exception:
-                                tau_ext = None
-                        # ee_pose (forwardKinematics) only when /ee_pose is subscribed.
-                        ee = None
-                        if self.__ee_fk is not None and sub_ee:
-                            try:
-                                ee = self.__ee_fk.compute(states[arm_ids, 0])
-                            except Exception:
-                                ee = None
-                        # wrench (Jacobian + solve) only when /wrench is subscribed.
-                        ee_wrench = None
-                        if self.__ee_fk is not None and tau_ext is not None and sub_wrench:
-                            try:
-                                ee_wrench = self.__ee_fk.wrench(
-                                    states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
-                            except Exception:
-                                ee_wrench = None
-                        self.__state_pub.publish(self.__pub_side, ts,
-                                                 states[:, 0], states[:, 1], states[:, 2],
-                                                 tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
+                    # (#6: the high-rate state PUB now lives in the device-io process.
+                    # The old per-fresh-frame pinocchio tau_ext + FK + publish that
+                    # used to run HERE — the control_hz=1000 GIL-starvation park cause
+                    # — is gone; __state_pub/__ee_fk are permanently None.)
 
-            # cmds
+            # cmds — sole consumer + append-only writers under the GIL, so a
+            # truthiness guard is race-free and avoids raising/catching IndexError
+            # on the ~common empty-queue iteration.
             cmds_pack = None
-            try:
-                cmds_pack = cmds_queue[
-                    -1] if self._realtime_mode else cmds_queue.popleft()
-            except IndexError:
-                pass
+            if cmds_queue:
+                cmds_pack = cmds_queue[-1] if self._realtime_mode else cmds_queue.popleft()
             sent = False
             if cmds_pack is not None:
                 ts, seq, cmds = cmds_pack
@@ -534,139 +513,15 @@ class HexRobotHexarm(HexRobotBase):
         # close
         self.close()
 
-    def __pub_worker(self):
-        """Timer-driven non-RT publisher (seqlock + tag): runs at its OWN rate
-        (control_hz), reads the latest slot (tag, ts, states) written lock-free by
-        the control loop, and publishes the LAST control cycle each tick. Skips
-        when the tag has not advanced (no new frame); a tag GAP is a discard, so
-        the coalescing is now explicit + observable ([PUBTAG]). Serialize/encode/
-        send stays entirely off the 1 kHz control loop."""
-        if self.__pub_rt:
-            # Dedicated pub core (SODA_PUB_CORE, else side-derived left->4 /
-            # right->5), kept OFF the isolated control cores; FIFO-40. Guarded.
-            try:
-                import os as _os
-                # The PUB does ZMQ (network) I/O, so it MUST stay on a HOUSEKEEPING
-                # core. isolcpus/nohz_full/irqaffinity=0-3 strip softirq/network
-                # processing from the isolated cores (4-7) -> a pub pinned there
-                # STALLS its sends. Default to the housekeeping range {0,1,2,3};
-                # SODA_PUB_CORE can override with a single housekeeping core.
-                _pc = _os.environ.get("SODA_PUB_CORE")
-                _cores = {int(_pc)} if _pc else {0, 1, 2, 3}
-                _os.sched_setaffinity(0, _cores)
-                _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(40))
-                print(f"[hexarm] pub_worker -> cores {sorted(_cores)} "
-                      f"(housekeeping), SCHED_FIFO-40")
-            except Exception as e:
-                print(f"[hexarm] pub_worker RT setup failed ({e})")
-        # Oversample the seqlock poll, DECOUPLED from the control rate. Polling at
-        # the same rate as the control loop makes two independent same-rate timers
-        # beat: with any jitter the pub wake drifts across the control write, so
-        # some ticks see no new frame (idle) and some see two (drop one) -> ~5-10%
-        # discard, worst at 500 Hz control. Polling >=2x control (>=1 kHz floor)
-        # guarantees the pub checks the slot at least twice per control frame and
-        # catches every one regardless of phase. Costs nothing on the RT control
-        # loop (only this non-RT thread spins a bit faster). SODA_PUB_HZ overrides.
-        _phz = os.environ.get("SODA_PUB_HZ")
-        pub_hz = float(_phz) if _phz else max(2.0 * self.__work_loop_hz, 1000.0)
-        print(f"[hexarm] pub_worker poll {pub_hz:.0f} Hz "
-              f"(control {self.__work_loop_hz:.0f} Hz)", flush=True)
-        rate = HexRate(pub_hz)
-        last_tag, pub_n, disc = -1, 0, 0
-        while not self.__pub_stop.is_set():
-            slot = self.__pub_slot           # atomic read of the latest (GIL)
-            if slot is not None and slot[0] != last_tag:
-                if last_tag >= 0 and slot[0] > last_tag + 1:
-                    disc += slot[0] - last_tag - 1
-                last_tag = slot[0]
-                try:
-                    self.__do_publish(slot[1], slot[2])
-                    pub_n += 1
-                    if pub_n % 5000 == 0:
-                        _tot = pub_n + disc
-                        print(f"[PUBTAG] published={pub_n} discarded={disc} "
-                              f"({disc / _tot * 100:.1f}%)", flush=True)
-                except Exception as e:
-                    print(f"\033[91m[hexarm] pub_worker error: {e}\033[0m")
-            rate.sleep()
-
-    def __do_publish(self, ts, states):
-        """Serialize + (subscriber-gated pinocchio) estimate + PUB-send one state
-        frame. Called inline (SODA_PUB_THREAD off) or from __pub_worker (on)."""
-        arm_ids = self.__motor_idx["robot_arm"]
-        _sd = self.__pub_side
-        sp = self.__state_pub
-        sub_tau = sp.has_subscriber(f"{_sd}/tau_ext".encode())
-        sub_wrench = sp.has_subscriber(f"{_sd}/wrench".encode())
-        sub_ee = sp.has_subscriber(f"{_sd}/ee_pose".encode())
-        tau_ext = None
-        if self.__pin is not None and (sub_tau or sub_wrench):
-            try:
-                tau_ext = states[:, 2].astype(np.float64).copy()
-                tau_ext[arm_ids] -= self.__gravity_fn(states[arm_ids, 0])
-            except Exception:
-                tau_ext = None
-        ee = None
-        if self.__ee_fk is not None and sub_ee:
-            try:
-                ee = self.__ee_fk.compute(states[arm_ids, 0])
-            except Exception:
-                ee = None
-        ee_wrench = None
-        if self.__ee_fk is not None and tau_ext is not None and sub_wrench:
-            try:
-                ee_wrench = self.__ee_fk.wrench(
-                    states[arm_ids, 0], tau_ext[arm_ids], self.__ee_wrench_sign)
-            except Exception:
-                ee_wrench = None
-        self.__state_pub.publish(self.__pub_side, ts,
-                                 states[:, 0], states[:, 1], states[:, 2],
-                                 tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
-
-    def __get_states(self) -> tuple[np.ndarray | None, dict | None]:
-        if self.__arm is None:
+    def __get_states(self) -> tuple[float | None, np.ndarray | None]:
+        # #6: measured state now arrives from the device-I/O process via the
+        # STATE seqlock slot. The arm/gripper timestamp-sync and the sens_ts
+        # choice already happened there, so this is just a lock-free read of the
+        # freshest consistent frame (or None until the first frame lands).
+        got = SHM.unpack_state(self.__state_slot.read())
+        if got is None:
             return None, None
-
-        # (arm_dofs, 3) # pos vel eff
-        self.__arm_state_buffer = self.__arm.get_simple_motor_status()
-
-        # (gripper_dofs, 3) # pos vel eff
-        if self.__gripper is not None:
-            self.__gripper_state_buffer = self.__gripper.get_simple_motor_status(
-            )
-
-        arm_ready = self.__arm_state_buffer is not None
-        gripper_ready = self.__gripper is None or self.__gripper_state_buffer is not None
-        if arm_ready and gripper_ready:
-            arm_ts = self.__arm_state_buffer['ts']
-            gripper_ts = self.__gripper_state_buffer[
-                'ts'] if self.__gripper is not None else arm_ts
-
-            delta_ms = hex_ts_delta_ms(arm_ts, gripper_ts)
-            if np.fabs(delta_ms) < 1e-6:
-                pos = self.__arm_state_buffer['pos']
-                vel = self.__arm_state_buffer['vel']
-                eff = self.__arm_state_buffer['eff']
-
-                if self.__gripper is not None:
-                    pos = np.concatenate(
-                        [pos, self.__gripper_state_buffer['pos']])
-                    vel = np.concatenate(
-                        [vel, self.__gripper_state_buffer['vel']])
-                    eff = np.concatenate(
-                        [eff, self.__gripper_state_buffer['eff']])
-
-                state = np.array([pos, vel, eff]).T
-                self.__arm_state_buffer, self.__gripper_state_buffer = None, None
-                return arm_ts if self.__sens_ts else hex_ts_now(), state
-            elif delta_ms > 0.0:
-                self.__gripper_state_buffer = None
-                return None, None
-            else:
-                self.__arm_state_buffer = None
-                return None, None
-
-        return None, None
+        return got  # (ts, state[n,3] pos/vel/eff)
 
     def __set_cmds(self, cmds: np.ndarray) -> bool:
         # cmds: (n)
@@ -675,10 +530,6 @@ class HexRobotHexarm(HexRobotBase):
         # [[pos_0, tor_0], ..., [pos_n, tor_n]]
         # cmds: (n, 5)
         # [[pos_0, vel_0, tor_0, kp_0, kd_0], ..., [pos_n, vel_n, tor_n, kp_n, kd_n]]
-        if self.__arm is None:
-            print("\033[91mArm not found\033[0m")
-            return False
-
         if cmds.shape[0] < self._dofs_sum:
             print(
                 "\033[91mThe length of joint_angles must be greater than or equal to the number of motors\033[0m"
@@ -738,42 +589,36 @@ class HexRobotHexarm(HexRobotBase):
             cmd_tor[self.__motor_idx["robot_arm"]],
             arm_tar_pos, self.__last_q,
             cmd_kp[self.__motor_idx["robot_arm"]], self.__gravity_fn)
-        arm_cmd = self.__arm.construct_mit_command(
-            arm_tar_pos,
-            tar_vel[self.__motor_idx["robot_arm"]],
-            arm_tor,
-            cmd_kp[self.__motor_idx["robot_arm"]],
-            cmd_kd[self.__motor_idx["robot_arm"]],
-        )
-        self.__arm.motor_command(CommandType.MIT, arm_cmd)
+        # #6: instead of construct_mit_command + motor_command HERE, hand the
+        # FULLY-RESOLVED MIT numbers to the device-I/O process via the CMD slot;
+        # it replays them onto the SDK on its own GIL (pinocchio-free). The
+        # gripper's behaviors (POSITION honored by Hands; MIT/torque ignored) are
+        # decided here and carried as a mode enum + set_pos_torque gate so the
+        # device side needs no branch logic and no state:
+        #   LIMP  — compliant + "torque" mode: zero-torque so the claws backdrive
+        #   GATED — widen the Hands torque gate (compliant_torque / default), then
+        #           POSITION-control the streamed angle.
+        _arm = self.__motor_idx["robot_arm"]
+        grip_mode = GRIP_POSITION
+        grip_gate = -1.0
+        grip_val = np.zeros(0)
+        g_idx = self.__motor_idx.get("robot_gripper")
+        if g_idx is not None:
+            grip_val = np.asarray(cmd_pos)[g_idx]
+            want_compliant = bool(np.all(np.asarray(cmd_kp)[g_idx] <= 1e-6))
+            if want_compliant and self.__gripper_compliant_mode == "torque":
+                grip_mode = GRIP_LIMP
+            else:
+                grip_mode = GRIP_GATED
+                grip_gate = (self.__gripper_compliant_torque if want_compliant
+                             else self.__gripper_default_torque)
 
-        # gripper — POSITION control by default (Hands honors only POSITION; its
-        # MIT/torque-feedforward inputs are ignored). For a compliant gripper
-        # (gripper-joint kp≈0, e.g. zero-gravity hand-posing) relax it per
-        # gripper_compliant_mode: "torque" commands zero torque so the motor goes
-        # limp and backdrives by hand; "position" widens the Hands torque gate so
-        # the streamed current angle tracks the hand.
-        if self.__gripper is not None:
-            try:
-                g_idx = self.__motor_idx["robot_gripper"]
-                want_compliant = bool(
-                    np.all(np.asarray(cmd_kp)[g_idx] <= 1e-6))
-                if want_compliant and self.__gripper_compliant_mode == "torque":
-                    self.__gripper.motor_command(
-                        CommandType.TORQUE, [0.0] * len(g_idx))
-                    self.__gripper_gate = None  # re-apply gate when we return
-                else:
-                    gate = (self.__gripper_compliant_torque if want_compliant
-                            else self.__gripper_default_torque)
-                    if gate != self.__gripper_gate:
-                        self.__gripper.set_pos_torque(gate)
-                        self.__gripper_gate = gate
-                    self.__gripper.motor_command(
-                        CommandType.POSITION, cmd_pos[g_idx])
-            except (ValueError, Exception):
-                # Hands device may raise if motor data not yet available
-                pass
-
+        self.__cmd_seq = (self.__cmd_seq + 1) % 2_000_000_000
+        self.__cmd_slot.write(SHM.pack_cmd(
+            self.__cmd_seq,
+            arm_tar_pos, tar_vel[_arm], arm_tor,
+            cmd_kp[_arm], cmd_kd[_arm],
+            grip_mode, grip_gate, grip_val))
         return True
 
     # ==================== control mode + safety + Cartesian impedance ==========
@@ -795,45 +640,76 @@ class HexRobotHexarm(HexRobotBase):
         """Clear a latched parking-stop / fault and re-enter MIT so the arm resumes
         WITHOUT a physical power-cycle. Best-effort against the closed hex_device SDK
         (getattr-guarded); the streamed MIT commands then re-establish control."""
-        if self.__arm is None:
-            return False
-        ok = True
+        # #6: the SDK lives in the device-I/O process, so forward the request:
+        # bump the shared counter; the child does clear_parking_stop + enable_mit.
         try:
-            if hasattr(self.__arm, "clear_parking_stop"):
-                self.__arm.clear_parking_stop()
-            if hasattr(self.__arm, "enable_mit"):
-                self.__arm.enable_mit()
+            with self.__io_clear_req.get_lock():
+                self.__io_clear_req.value += 1
             self.__idle_safe_active = False   # let the work loop command again
-            hex_log(HEX_LOG_LEVEL["info"], "[hexarm] clear_fault -> re-enabled MIT")
+            hex_log(HEX_LOG_LEVEL["info"],
+                    "[hexarm] clear_fault -> requested device-io")
+            return True
         except Exception as e:
             print(f"\033[91m[hexarm] clear_fault error: {e}\033[0m")
-            ok = False
-        return ok
+            return False
 
     def get_fault(self) -> np.ndarray:
         """Fault descriptor for the ZMQ buffer: float64 [active(0/1),
-        remotely_clearable(0/1)]. Best-effort from the SDK status summary
-        (parking_stop_detail); a parking stop is remotely clearable."""
-        active, clearable = 0.0, 1.0
+        remotely_clearable(0/1)]. #6: the device-I/O process writes the active
+        flag from the SDK status each tick into a shared Value; a parking stop
+        is remotely clearable."""
         try:
-            if self.__arm is not None and hasattr(self.__arm, "get_status_summary"):
-                s = self.__arm.get_status_summary() or {}
-                active = 1.0 if s.get("parking_stop_detail") else 0.0
+            active = float(self.__io_fault.value)
         except Exception:
-            pass
-        return np.array([active, clearable], dtype=np.float64)
+            active = 0.0
+        return np.array([active, 1.0], dtype=np.float64)
 
     def __gravity_fn(self, q: np.ndarray) -> np.ndarray:
         """Generalized gravity at q — the pinocchio closure handed to MitArmSafety."""
         return self.__pin.computeGeneralizedGravity(
             self.__grav_model, self.__grav_data, np.asarray(q, dtype=np.float64))
 
+    def __spawn_device_io(self):
+        """(Re)spawn the device-I/O process and block on its dof/limits handshake.
+        Respawns reattach to the SAME shmem slots (this process stays the owner),
+        so the ZMQ clients see an uninterrupted state/command path across an SDK
+        crash. Returns the handshake dict."""
+        with self.__io_lock:
+            init_q = _MP.Queue()
+            self.__io_proc = _MP.Process(
+                target=run_device_io,
+                args=(self.__io_cfg, self.__state_name, self.__cmd_name,
+                      self.__io_stop, init_q, self.__io_clear_req, self.__io_fault),
+                daemon=True,
+            )
+            self.__io_proc.start()
+            try:
+                hs = init_q.get(timeout=60.0)
+            except Exception:
+                raise RuntimeError(
+                    "device-io handshake timed out (arm not reachable?)")
+            if isinstance(hs, dict) and "err" in hs:
+                raise RuntimeError(f"device-io init failed: {hs['err']}")
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"[hexarm] device-io up (pid={self.__io_proc.pid})")
+            return hs
+
     def close(self):
         if not self._working.is_set():
             return
         self._working.clear()
-        if self.__state_pub is not None:
-            self.__state_pub.close()
-        self.__arm.stop()
-        self.__hex_api.close()
+        # #6: stop the device-I/O process, then release the shmem slots (owner).
+        try:
+            self.__io_stop.set()
+            if self.__io_proc is not None:
+                self.__io_proc.join(timeout=5.0)
+                if self.__io_proc.is_alive():
+                    self.__io_proc.terminate()
+        except Exception:
+            pass
+        try:
+            self.__state_slot.close()
+            self.__cmd_slot.close()
+        except Exception:
+            pass
         hex_log(HEX_LOG_LEVEL["info"], "HexRobotHexarm closed")
