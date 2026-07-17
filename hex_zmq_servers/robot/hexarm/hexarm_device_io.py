@@ -25,6 +25,7 @@
 
 import os
 import time
+import threading
 import numpy as np
 
 from hex_device import HexDeviceApi
@@ -183,6 +184,11 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
         except Exception as e:
             print(f"\033[33m[device_io] state PUB disabled: {e}\033[0m", flush=True)
 
+    # decoupled state-PUB handoff: read loop writes latest (tag, ts, pos, vel, eff);
+    # _pub_worker below oversamples + sends it off the read hot path.
+    _pub_slot = [None]
+    _pub_tag = [0]
+
     last_cmd_seq = -1
     last_gate = None
     last_clear = int(clear_req.value) if clear_req is not None else 0
@@ -195,10 +201,10 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     ts_pair_tol = float(cfg.get('ts_pair_tol_ms', 1.5 * 1000.0 / cfg['control_hz']))
     # Tight but not busy: poll a bit faster than the report rate so we never
     # miss a fresh state frame or a fresh command, without burning a core.
-    # NOTE: poll at 1x control_hz, NOT 2x. Polling faster spins this loop's GIL and
-    # STARVES the SDK's own KCP-recv thread (same process/GIL) -> fewer frames surface
-    # -> ~380-416Hz. Mirrors the single-process work_loop_hz=control_hz fix (470->496).
-    poll_hz = float(cfg.get('device_io_poll_hz', 1.0 * cfg['control_hz']))
+    # Poll at 2x control_hz so the loop drains the firmware's ~1kHz stream to the
+    # freshest frame every ~0.5ms. The state PUB is DECOUPLED to _pub_worker (below),
+    # so this loop no longer serializes/sends inline -> polling fast costs no serial pub.
+    poll_hz = float(cfg.get('device_io_poll_hz', 2.0 * cfg['control_hz']))
     period = 1.0 / max(poll_hz, 1.0)
     # get_status_summary() is a FULL SDK status query — far heavier than the
     # pos/vel/eff read. It is a latched park indicator, so throttle it well below
@@ -223,6 +229,34 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     _d_mindelta = 1e9  # min ms between consecutive DISTINCT firmware arm timestamps:
     # ~1ms => firmware produces >=1000Hz (we/link drop, host-fixable); ~2.4ms => firmware is 411Hz (vendor)
     _d_last = time.perf_counter()
+
+    # ---- decoupled state PUB (mirrors rt-nic __pub_worker) --------------------
+    # Serialize + ZMQ-send the latest state OFF the read hot path so the read loop
+    # runs at full firmware rate. Oversample at max(2x control, 1kHz) to emit every
+    # frame regardless of phase. Non-RT + unpinned so it never contends the FF read
+    # loop / SDK _periodic on the isolated core.
+    def _pub_worker():
+        try:
+            os.sched_setaffinity(0, set(range(os.cpu_count())))  # unpin: off the read core
+        except Exception:
+            pass
+        _ph = float(cfg.get('device_io_pub_hz', max(2.0 * cfg['control_hz'], 1000.0)))
+        _per = 1.0 / max(_ph, 1.0)
+        _lt = 0
+        while not stop_flag.is_set():
+            _t0 = time.perf_counter()
+            _sl = _pub_slot[0]
+            if _sl is not None and _sl[0] != _lt and pub is not None:
+                _lt = _sl[0]
+                try:
+                    pub.publish(pub_side, _sl[1], _sl[2], _sl[3], _sl[4])
+                except Exception:
+                    pass
+            _dt = time.perf_counter() - _t0
+            if _dt < _per:
+                time.sleep(_per - _dt)
+    if pub is not None:
+        threading.Thread(target=_pub_worker, name='devio_pub', daemon=True).start()
 
     while not stop_flag.is_set():
         t0 = time.perf_counter()
@@ -288,8 +322,11 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                         ts = a_ts if sens_ts else hex_ts_now()  # hex-ts dict
                         state_slot.write(H.pack_state(ts, pos, vel, eff))
                         if pub is not None:
-                            # RT-steady raw state stream (no tau_ext/ee → no pinocchio)
-                            pub.publish(pub_side, a_ts, pos, vel, eff)
+                            # hand off latest-wins to _pub_worker (decoupled); do NOT
+                            # serialize/send inline -- that made read+pub serial (~2ms/
+                            # iter -> ~416Hz) and dropped frames during the send window.
+                            _pub_tag[0] += 1
+                            _pub_slot[0] = (_pub_tag[0], a_ts, pos, vel, eff)
             except Exception:
                 pass
 
