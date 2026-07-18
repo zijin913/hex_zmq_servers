@@ -193,8 +193,6 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     last_cmd_seq = -1
     last_gate = None
     last_clear = int(clear_req.value) if clear_req is not None else 0
-    last_rt = time.perf_counter()
-    last_fault = 0.0
     last_state = 0.0
     sens_ts = bool(cfg.get('sens_ts', True))
     # arm/gripper timestamp pairing tolerance (mirrors robot_hexarm c97f5ac): the old exact
@@ -202,15 +200,11 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     ts_pair_tol = float(cfg.get('ts_pair_tol_ms', 1.5 * 1000.0 / cfg['control_hz']))
     # Tight but not busy: poll a bit faster than the report rate so we never
     # miss a fresh state frame or a fresh command, without burning a core.
-    # Poll at 2x control_hz so the loop drains the firmware's ~1kHz stream to the
-    # freshest frame every ~0.5ms. The state PUB is DECOUPLED to _pub_worker (below),
-    # so this loop no longer serializes/sends inline -> polling fast costs no serial pub.
+    # Poll at 2x control_hz so the single-pop read stays ahead of the firmware's
+    # ~500/s delivery (SDK deque stays empty, no aliasing). The state PUB is DECOUPLED
+    # to _pub_worker (below), so this loop neither serializes/sends nor drains inline.
     poll_hz = float(cfg.get('device_io_poll_hz', 2.0 * cfg['control_hz']))
     period = 1.0 / max(poll_hz, 1.0)
-    # get_status_summary() is a FULL SDK status query — far heavier than the
-    # pos/vel/eff read. It is a latched park indicator, so throttle it well below
-    # the poll rate (default 20 Hz). NOT the 1ms watchdog path.
-    fault_period = 1.0 / max(float(cfg.get('device_io_fault_hz', 20.0)), 1.0)
     # STATE read + PUB may run slower than the poll loop: CMD pickup + fault stay
     # at poll cadence, but the 2x get_simple_motor_status + pack + publish only
     # need to keep up with the fastest STATE consumer (teleop/policy/telemetry,
