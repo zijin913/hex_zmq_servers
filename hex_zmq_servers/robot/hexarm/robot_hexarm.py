@@ -367,7 +367,7 @@ class HexRobotHexarm(HexRobotBase):
         if _rt_on:
             try:
                 _rc = _os.environ.get("SODA_RT_CORE")
-                _core = int(_rc) if _rc else (4 if self.__pub_side == "left" else 5)
+                _core = int(_rc) if _rc else (6 if self.__pub_side == "left" else 7)
                 _os.sched_setaffinity(0, {_core})
                 _os.sched_setscheduler(0, _os.SCHED_FIFO, _os.sched_param(80))
                 print(f"[hexarm] RT control loop -> core {_core}, SCHED_FIFO-80")
@@ -686,7 +686,7 @@ class HexRobotHexarm(HexRobotBase):
                 _cs = [int(x) for x in _dc.split(",") if x.strip()]
                 self.__io_cfg["device_io_cpu"] = (
                     (_cs[0] if self.__pub_side == "left" else _cs[-1]) if _cs
-                    else (6 if self.__pub_side == "left" else 7))
+                    else (4 if self.__pub_side == "left" else 5))
             init_q = _MP.Queue()
             self.__io_proc = _MP.Process(
                 target=run_device_io,
