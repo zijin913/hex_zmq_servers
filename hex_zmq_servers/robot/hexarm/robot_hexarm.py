@@ -111,7 +111,7 @@ class HexRobotHexarm(HexRobotBase):
         # -> thermal trip / gripper death); force control holds at the set torque
         # (eff tracks torque, ~10x lower) with no stall. gripper_hold_torque=0 -> off.
         self.__gripper_hold_torque = float(
-            robot_config.get("gripper_hold_torque", 0.8))
+            robot_config.get("gripper_hold_torque", 1.2))
         self.__gripper_hold_close_at = float(
             robot_config.get("gripper_hold_close_at", 0.5))
         if self.__gripper_hold_torque > 0.0:
