@@ -288,25 +288,15 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
         if time.perf_counter() - last_state >= state_period:
             last_state = time.perf_counter()
             try:
-                # #6 fix: DRAIN the deque to the freshest state each iteration. The SDK
-                # pushes ~1000/s, but bursty KCP (10ms batches) + maxlen-10 deque + a
-                # single pop surfaced only ~410 (older frames overflow-dropped). Draining
-                # the whole buffered batch -> freshest state, higher effective rate.
+                # single-pop (mirrors rt-nic). With the oversampled poll (> firmware
+                # rate) the SDK deque stays empty (diag drain=0.0), so the while-drain
+                # only burned an extra get() per side AND pushed the loop work past the
+                # poll period so it NEVER slept -> it hogged the GIL from the SDK's
+                # _periodic DOWN-send thread -> ~470 sends/s -> firmware 470. One pop
+                # each; the loop now sleeps and _periodic gets the GIL to send ~500.
                 a = arm.get_simple_motor_status()
                 _drain = 0
-                while True:
-                    _x = arm.get_simple_motor_status()
-                    if _x is None:
-                        break
-                    a = _x
-                    _drain += 1
                 g = gripper.get_simple_motor_status() if gripper is not None else None
-                if gripper is not None:
-                    while True:
-                        _y = gripper.get_simple_motor_status()
-                        if _y is None:
-                            break
-                        g = _y
                 if _diag:
                     _d_drainsum += _drain
                     _d_drainn += 1
