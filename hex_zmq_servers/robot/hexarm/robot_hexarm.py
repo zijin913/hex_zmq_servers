@@ -29,7 +29,8 @@ from hex_device.motor_base import CommandType
 # process's pinocchio/FK/PUB compute (the control_hz=1000 park root cause).
 import multiprocessing as mp
 from . import hexarm_shmem as SHM
-from .hexarm_device_io import run_device_io, GRIP_POSITION, GRIP_LIMP, GRIP_GATED
+from .hexarm_device_io import (run_device_io, GRIP_POSITION, GRIP_LIMP, GRIP_GATED,
+                               GRIP_HOLD)
 
 # spawn context: the child re-imports fresh (no inherited pinocchio/numpy/SDK
 # state) and the SDK is spawn-safe (verified on real HW).
@@ -104,6 +105,18 @@ class HexRobotHexarm(HexRobotBase):
             robot_config.get("gripper_compliant_torque", 50.0))
         self.__gripper_default_torque = float(
             robot_config.get("gripper_default_torque", 3.0))
+        # Force-controlled grasp (GRIP_HOLD): once commanded closed past
+        # gripper_hold_close_at, hold at gripper_hold_torque via TORQUE instead of
+        # POSITION. POSITION stalls the servo against the object (eff ~6.6 sustained
+        # -> thermal trip / gripper death); force control holds at the set torque
+        # (eff tracks torque, ~10x lower) with no stall. gripper_hold_torque=0 -> off.
+        self.__gripper_hold_torque = float(
+            robot_config.get("gripper_hold_torque", 0.8))
+        self.__gripper_hold_close_at = float(
+            robot_config.get("gripper_hold_close_at", 0.5))
+        if self.__gripper_hold_torque > 0.0:
+            print("[hexarm] gripper GRIP_HOLD on: force-hold %.2f when grip_val>=%.2f"
+                  % (self.__gripper_hold_torque, self.__gripper_hold_close_at), flush=True)
         self.__gripper_gate = None  # last set_pos_torque value (lazy-applied)
 
         # Idle-hold keep-alive (opt-in). When the client command stream has a
@@ -608,6 +621,11 @@ class HexRobotHexarm(HexRobotBase):
             want_compliant = bool(np.all(np.asarray(cmd_kp)[g_idx] <= 1e-6))
             if want_compliant and self.__gripper_compliant_mode == "torque":
                 grip_mode = GRIP_LIMP
+            elif (self.__gripper_hold_torque > 0.0 and not want_compliant
+                  and float(np.max(grip_val)) >= self.__gripper_hold_close_at):
+                # grasping: force-controlled hold (no position stall -> no overheat)
+                grip_mode = GRIP_HOLD
+                grip_gate = self.__gripper_hold_torque
             else:
                 grip_mode = GRIP_GATED
                 grip_gate = (self.__gripper_compliant_torque if want_compliant

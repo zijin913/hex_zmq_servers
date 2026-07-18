@@ -39,6 +39,7 @@ from . import hexarm_shmem as H
 GRIP_POSITION = 0   # normal position control
 GRIP_LIMP = 1       # zero-torque limp (compliant hand-posing)
 GRIP_GATED = 2      # widen set_pos_torque gate, then position
+GRIP_HOLD = 3       # force-controlled grasp: hold at a set TORQUE (no position stall)
 
 
 def _concat(a, g, key):
@@ -384,6 +385,11 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                     if mode == GRIP_LIMP:
                         gripper.motor_command(CommandType.TORQUE,
                                               [0.0] * c['grip_val'].size)
+                        last_gate = None
+                    elif mode == GRIP_HOLD:
+                        # force-controlled grasp: hold at grip_gate TORQUE (no
+                        # position stall -> no overheat; eff tracks torque).
+                        gripper.motor_command(CommandType.TORQUE, [c['grip_gate']] * c['grip_val'].size)
                         last_gate = None
                     else:
                         if mode == GRIP_GATED and c['grip_gate'] >= 0 \
