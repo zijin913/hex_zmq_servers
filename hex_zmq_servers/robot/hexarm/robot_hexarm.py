@@ -117,6 +117,16 @@ class HexRobotHexarm(HexRobotBase):
         if self.__gripper_hold_torque > 0.0:
             print("[hexarm] gripper GRIP_HOLD on: force-hold %.2f when grip_val>=%.2f"
                   % (self.__gripper_hold_torque, self.__gripper_hold_close_at), flush=True)
+        # GRIP_HOLD approach->contact->hold: close via POSITION until the gripper
+        # stalls on the object (|vel|<contact_vel AND |eff|>contact_eff), then latch
+        # into TORQUE hold. Keeps the CLOSING gentle (no torque-driven slam).
+        self.__gripper_contact_vel = float(
+            robot_config.get("gripper_contact_vel", 0.05))
+        self.__gripper_contact_eff = float(
+            robot_config.get("gripper_contact_eff", 2.0))
+        self.__grip_holding = False
+        self.__grip_vel_meas = None
+        self.__grip_eff_meas = None
         self.__gripper_gate = None  # last set_pos_torque value (lazy-applied)
 
         # Idle-hold keep-alive (opt-in). When the client command stream has a
@@ -426,6 +436,11 @@ class HexRobotHexarm(HexRobotBase):
                 # __set_cmds and otherwise has no access to measured state).
                 arm_ids = self.__motor_idx["robot_arm"]
                 self.__last_q = states[arm_ids, 0]
+                # gripper measured |vel|,|eff| for GRIP_HOLD contact detection
+                _gids = self.__motor_idx.get("robot_gripper")
+                if _gids is not None:
+                    self.__grip_vel_meas = float(np.max(np.abs(states[_gids, 1])))
+                    self.__grip_eff_meas = float(np.max(np.abs(states[_gids, 2])))
                 if hex_ts_delta_ms(ts, last_states_ts) > 1e-6:
                     last_states_ts = ts
                     states_queue.append((ts, states_count, states))
@@ -621,15 +636,29 @@ class HexRobotHexarm(HexRobotBase):
             want_compliant = bool(np.all(np.asarray(cmd_kp)[g_idx] <= 1e-6))
             if want_compliant and self.__gripper_compliant_mode == "torque":
                 grip_mode = GRIP_LIMP
+                self.__grip_holding = False
             elif (self.__gripper_hold_torque > 0.0 and not want_compliant
                   and float(np.max(grip_val)) >= self.__gripper_hold_close_at):
-                # grasping: force-controlled hold (no position stall -> no overheat)
-                grip_mode = GRIP_HOLD
-                grip_gate = self.__gripper_hold_torque
+                # GRASP: close via POSITION (smooth) until CONTACT (gripper stalls:
+                # |vel|<contact_vel AND |eff|>contact_eff), then LATCH TORQUE hold.
+                # Latch avoids re-slamming; released when the command opens (else).
+                if not self.__grip_holding and (
+                        self.__grip_vel_meas is not None
+                        and self.__grip_vel_meas < self.__gripper_contact_vel
+                        and self.__grip_eff_meas is not None
+                        and self.__grip_eff_meas > self.__gripper_contact_eff):
+                    self.__grip_holding = True
+                if self.__grip_holding:
+                    grip_mode = GRIP_HOLD
+                    grip_gate = self.__gripper_hold_torque
+                else:
+                    grip_mode = GRIP_GATED          # approaching: position control
+                    grip_gate = self.__gripper_default_torque
             else:
                 grip_mode = GRIP_GATED
                 grip_gate = (self.__gripper_compliant_torque if want_compliant
                              else self.__gripper_default_torque)
+                self.__grip_holding = False
 
         self.__cmd_seq = (self.__cmd_seq + 1) % 2_000_000_000
         self.__cmd_slot.write(SHM.pack_cmd(
