@@ -258,6 +258,27 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     if pub is not None:
         threading.Thread(target=_pub_worker, name='devio_pub', daemon=True).start()
 
+    # ---- fault readback OFF the read loop ------------------------------------
+    # get_status_summary() is a heavy full SDK query; polling it in the read loop
+    # (even at 20Hz) stalled it ~2-3ms each time and the drain-to-freshest then
+    # discarded the frames buffered during the stall -> ~7% loss (~465 vs 500Hz).
+    # rt-nic never queried status in its control loop. Run it in its own thread.
+    def _fault_worker():
+        if fault_active is None or not hasattr(arm, 'get_status_summary'):
+            return
+        _fper = 1.0 / max(float(cfg.get('device_io_fault_hz', 20.0)), 1.0)
+        while not stop_flag.is_set():
+            _t0 = time.perf_counter()
+            try:
+                _s = arm.get_status_summary() or {}
+                fault_active.value = 1.0 if _s.get('parking_stop_detail') else 0.0
+            except Exception:
+                pass
+            _dt = time.perf_counter() - _t0
+            if _dt < _fper:
+                time.sleep(_fper - _dt)
+    threading.Thread(target=_fault_worker, name='devio_fault', daemon=True).start()
+
     while not stop_flag.is_set():
         t0 = time.perf_counter()
         if _diag:
@@ -376,14 +397,9 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                     arm.enable_mit()
                 print("\033[36m[device_io] clear_parking_stop + enable_mit\033[0m",
                       flush=True)
-            # get_status_summary() is a full SDK query — throttle to device_io_fault_hz
-            # (default 20 Hz). fault_active is a latched park indicator; a few tens of
-            # ms detection latency is immaterial and this halves the poll-loop cost.
-            if (fault_active is not None and hasattr(arm, "get_status_summary")
-                    and time.perf_counter() - last_fault >= fault_period):
-                last_fault = time.perf_counter()
-                s = arm.get_status_summary() or {}
-                fault_active.value = 1.0 if s.get("parking_stop_detail") else 0.0
+            # (fault readback moved OFF this loop to _fault_worker — get_status_summary
+            # is a heavy full SDK query that stalled the read here ~2-3ms every 50ms,
+            # and the drain-to-freshest then discarded the buffered frames -> ~7% loss.)
         except Exception:
             pass
 
