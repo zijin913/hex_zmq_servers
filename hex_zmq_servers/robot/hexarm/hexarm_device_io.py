@@ -26,6 +26,7 @@
 import os
 import time
 import threading
+import gc
 import numpy as np
 
 from hex_device import HexDeviceApi
@@ -279,6 +280,34 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                 time.sleep(_fper - _dt)
     threading.Thread(target=_fault_worker, name='devio_fault', daemon=True).start()
 
+    # ---- GC polish: kill the periodic gen2-collection freezes on the read loop ---
+    # The loop allocates per tick; automatic GC then stops-the-world 5-15ms at
+    # unpredictable times (the ~12ms max). Freeze the startup heap (never rescanned),
+    # disable AUTO gc, and do a rare manual collect off-path. Per-loop objects are
+    # refcounted (no cycles), so nothing accumulates between collects.
+    gc.collect()
+    try:
+        gc.freeze()
+    except Exception:
+        pass
+    gc.disable()
+
+    def _housekeeping():
+        # off the read hot path: rare manual GC + re-assert RT on late SDK threads
+        # (KCP reconnect), only when the thread count actually changes.
+        _ntask = [len(os.listdir('/proc/self/task'))]
+        while not stop_flag.is_set():
+            time.sleep(10.0)
+            try:
+                n = len(os.listdir('/proc/self/task'))
+                if rt_prio > 0 and n != _ntask[0]:
+                    _ntask[0] = n
+                    _set_rt_priority(rt_prio)
+                gc.collect()
+            except Exception:
+                pass
+    threading.Thread(target=_housekeeping, name='devio_hk', daemon=True).start()
+
     while not stop_flag.is_set():
         t0 = time.perf_counter()
         if _diag:
@@ -393,11 +422,8 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
         except Exception:
             pass
 
-        # Re-apply RT to any SDK threads spawned late (KCP reconnect etc.). Cheap;
-        # throttled to ~0.5Hz.
-        if rt_prio > 0 and (time.perf_counter() - last_rt) > 2.0:
-            last_rt = time.perf_counter()
-            _set_rt_priority(rt_prio)
+        # (RT re-apply moved OFF the read loop to the _housekeeping thread — the
+        # in-loop /proc/self/task scan every 2s was itself a periodic stall.)
 
         # #6 diag report (every ~2s), per arm side
         if _diag and (time.perf_counter() - _d_last) >= 2.0:
