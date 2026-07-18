@@ -127,6 +127,13 @@ class HexRobotHexarm(HexRobotBase):
         self.__grip_holding = False
         self.__grip_vel_meas = None
         self.__grip_eff_meas = None
+        # ramp the hold torque from the contact force down to the target over this
+        # many ticks so the POSITION->TORQUE handoff is force-continuous (a step drop
+        # springs the claws open = the "jump"). gripper_hold_ramp_s seconds.
+        self.__gripper_hold_ramp_ticks = max(1, int(float(
+            robot_config.get("gripper_hold_ramp_s", 0.3)) * control_hz))
+        self.__grip_hold_from = 0.0
+        self.__grip_hold_ramp = 0
         self.__gripper_gate = None  # last set_pos_torque value (lazy-applied)
 
         # Idle-hold keep-alive (opt-in). When the client command stream has a
@@ -648,9 +655,21 @@ class HexRobotHexarm(HexRobotBase):
                         and self.__grip_eff_meas is not None
                         and self.__grip_eff_meas > self.__gripper_contact_eff):
                     self.__grip_holding = True
+                    # start the hold torque at the current contact force and ramp
+                    # DOWN to the target, so the grip force is continuous across the
+                    # POSITION->TORQUE switch (a step drop springs the claws open).
+                    self.__grip_hold_from = max(self.__grip_eff_meas,
+                                                self.__gripper_hold_torque)
+                    self.__grip_hold_ramp = self.__gripper_hold_ramp_ticks
                 if self.__grip_holding:
                     grip_mode = GRIP_HOLD
-                    grip_gate = self.__gripper_hold_torque
+                    if self.__grip_hold_ramp > 0:
+                        _f = 1.0 - self.__grip_hold_ramp / float(self.__gripper_hold_ramp_ticks)
+                        grip_gate = (self.__grip_hold_from * (1.0 - _f)
+                                     + self.__gripper_hold_torque * _f)
+                        self.__grip_hold_ramp -= 1
+                    else:
+                        grip_gate = self.__gripper_hold_torque
                 else:
                     grip_mode = GRIP_GATED          # approaching: position control
                     grip_gate = self.__gripper_default_torque
