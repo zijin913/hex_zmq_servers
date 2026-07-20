@@ -7,6 +7,7 @@
 ################################################################
 
 import threading
+import time
 import numpy as np
 from collections import deque
 from abc import abstractmethod
@@ -79,6 +80,28 @@ class HexRobotClientBase(HexZMQClientBase):
         self._states_queue = deque(maxlen=self._deque_maxlen)
         self._cmds_queue = deque(maxlen=1)
         self._recv_loop_hz = net_config.get("recv_loop_hz", 2000)
+        # Demand-driven recv cadence, mirroring the camera client
+        # (cam/cam_base.py): poll the arm server at recv_loop_hz only while a
+        # consumer is actually reading (get_states / set_cmds within
+        # recv_idle_after seconds); otherwise drop to recv_idle_hz so an
+        # UNUSED client stops hammering localhost ZMQ. Every iteration is a
+        # blocking REQ/REP round-trip plus a msgpack decode and an
+        # np.frombuffer/reshape, and the cost lands twice — here, and in the
+        # server's worker threads. An idle client at the 2000 Hz default cost
+        # ~26% CPU per arm on soda-can, plus the matching server-side load,
+        # for data nobody read.
+        #
+        # UNLIKE the camera client this does NOT free-run at a low idle rate:
+        # for arms the REQ path is the FALLBACK for control (callers may retry
+        # only a few times, milliseconds apart), so a fixed 2 Hz idle tick like
+        # the camera's would make the fallback unusable. Instead the idle sleep
+        # waits on an event that any read/write sets, so demand resumes full
+        # cadence on the NEXT iteration rather than after an idle period. The
+        # idle rate is therefore only a keepalive ceiling, not a latency floor.
+        self._recv_idle_hz = net_config.get("recv_idle_hz", 20.0)
+        self._recv_idle_after = net_config.get("recv_idle_after", 1.0)
+        self._last_read = 0.0
+        self._demand_evt = threading.Event()
         self._last_sent_cmds_id = -1  # Track to avoid resending same command
 
     def __del__(self):
@@ -97,6 +120,12 @@ class HexRobotClientBase(HexZMQClientBase):
         return limits
 
     def get_states(self, newest: bool = False):
+        # Demand signal for _recv_loop's cadence. Stamped unconditionally —
+        # including when the queue is empty — so a caller polling an idle
+        # client wakes the loop on its first attempt rather than after it has
+        # already given up.
+        self._last_read = time.monotonic()
+        self._demand_evt.set()
         try:
             if self._realtime_mode or newest:
                 hdr, states = self._states_queue[-1]
@@ -111,6 +140,11 @@ class HexRobotClientBase(HexZMQClientBase):
             return None, None
 
     def set_cmds(self, cmds: np.ndarray):
+        # Commands are delivered by _recv_loop's second half, so a writer is
+        # demand too — otherwise a client that only sends would sit at the idle
+        # cadence and its commands would be paced by that instead.
+        self._last_read = time.monotonic()
+        self._demand_evt.set()
         self._cmds_queue.append(cmds)
 
     def set_control_mode(self, mode: str) -> bool:
@@ -174,7 +208,8 @@ class HexRobotClientBase(HexZMQClientBase):
             return False
 
     def _recv_loop(self):
-        rate = HexRate(self._recv_loop_hz)
+        rate = HexRate(self._recv_loop_hz)   # active cadence while in use
+        idle_period = 1.0 / self._recv_idle_hz if self._recv_idle_hz > 0 else 0.0
         while self._recv_flag:
             hdr, states = self._get_states_inner()
             if hdr is not None:
@@ -186,7 +221,17 @@ class HexRobotClientBase(HexZMQClientBase):
             except IndexError:
                 pass
 
-            rate.sleep()
+            # Demand-driven cadence: full rate only while a consumer read or
+            # wrote recently; otherwise idle on the event so the very next
+            # get_states/set_cmds resumes full cadence immediately.
+            # recv_idle_hz <= 0 disables idling (legacy always-on behaviour).
+            if (idle_period <= 0.0
+                    or time.monotonic() - self._last_read < self._recv_idle_after):
+                self._demand_evt.clear()
+                rate.sleep()
+            else:
+                self._demand_evt.wait(idle_period)
+                self._demand_evt.clear()
 
 
 class HexRobotServerBase(HexZMQServerBase):
