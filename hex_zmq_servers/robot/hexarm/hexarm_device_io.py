@@ -46,6 +46,29 @@ def _concat(a, g, key):
     return np.concatenate([a[key], g[key]]) if g is not None else np.asarray(a[key])
 
 
+def _isolated_cpus() -> set:
+    """CPUs the kernel was booted with isolcpus= (empty set if none / unreadable).
+
+    Used to move the PUB worker onto HOUSEKEEPING cores specifically, rather
+    than merely widening its mask to every CPU -- see _pub_worker.
+    """
+    try:
+        raw = open("/sys/devices/system/cpu/isolated").read().strip()
+    except Exception:
+        return set()
+    out = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, hi = part.split("-", 1)
+            out.update(range(int(lo), int(hi) + 1))
+        else:
+            out.add(int(part))
+    return out
+
+
 def _pin_affinity(cpu: int) -> int:
     """Pin ALL threads of THIS process (incl. the SDK's _periodic watchdog-feed +
     KCP send/recv) to a single isolated core. The isolated core (isolcpus) has no
@@ -229,11 +252,37 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     # ---- decoupled state PUB (mirrors rt-nic __pub_worker) --------------------
     # Serialize + ZMQ-send the latest state OFF the read hot path so the read loop
     # runs at full firmware rate. Oversample at max(2x control, 1kHz) to emit every
-    # frame regardless of phase. Non-RT + unpinned so it never contends the FF read
-    # loop / SDK _periodic on the isolated core.
+    # frame regardless of phase. Non-RT and moved onto the housekeeping cores so it
+    # never contends the FF read loop / SDK _periodic on the isolated core -- and so
+    # its ZMQ sends run where interrupts and softirqs are actually serviced.
     def _pub_worker():
+        # Move to the HOUSEKEEPING cores, not merely to "every core".
+        #
+        # This previously did sched_setaffinity(0, set(range(os.cpu_count()))),
+        # which on an 8-CPU box sets the mask to 0-7 -- i.e. it INCLUDES the
+        # isolated cores. The thread inherits the process pin (the isolated
+        # device-io core) and isolcpus takes those CPUs out of load balancing,
+        # so nothing ever migrates it out: the "unpin" widened the mask but
+        # left the thread exactly where it was. Measured on soda-can, 20
+        # samples of both arms' PUB threads landed 0 times on a housekeeping
+        # core; they sat on the SCHED_FIFO-80 control-loop cores, where a
+        # normal-priority 1 kHz publisher is preempted unconditionally, and
+        # where irqaffinity= has steered device IRQs away.
+        #
+        # Subtracting the isolated set makes the placement match the intent
+        # that 8377b9a established: network I/O belongs on housekeeping cores.
+        # Falls back to the full mask if isolcpus is empty or unreadable, which
+        # reproduces the old behaviour on a non-isolated box.
         try:
-            os.sched_setaffinity(0, set(range(os.cpu_count())))  # unpin: off the read core
+            _all = set(range(os.cpu_count()))
+            _hk = _all - _isolated_cpus()
+            os.sched_setaffinity(0, _hk or _all)
+        except Exception:
+            pass
+        try:
+            print("\033[36m[device_io] pub worker on cpus %s (isolated %s)\033[0m"
+                  % (sorted(os.sched_getaffinity(0)), sorted(_isolated_cpus()) or "none"),
+                  flush=True)
         except Exception:
             pass
         _ph = float(cfg.get('device_io_pub_hz', max(2.0 * cfg['control_hz'], 1000.0)))
