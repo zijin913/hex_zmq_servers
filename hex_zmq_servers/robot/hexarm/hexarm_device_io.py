@@ -27,6 +27,7 @@ import os
 import time
 import threading
 import gc
+from collections import deque
 import numpy as np
 
 from hex_device import HexDeviceApi
@@ -211,8 +212,36 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
 
     # decoupled state-PUB handoff: read loop writes latest (tag, ts, pos, vel, eff);
     # _pub_worker below oversamples + sends it off the read hot path.
-    _pub_slot = [None]
+    # Read loop -> pub worker handoff. This was a single latest-wins slot, which
+    # silently coalesced: any state produced between two worker samples was
+    # overwritten and never published. Measured on soda-can that cost 1-9
+    # states/s out of 500 -- the entire gap between what the firmware produced
+    # and what a subscriber received (ZMQ refused 0, the ts-pair gate dropped 0).
+    #
+    # The slot only worked if the worker sampled strictly faster than the source
+    # produced, and its rate is max(2x control_hz, 1000) = exactly 2x at
+    # control_hz=500 -- no margin, so any wakeup jitter lost a frame. A BOUNDED
+    # queue removes that requirement entirely: the worker drains whatever
+    # accumulated, so being late costs latency, not data.
+    #
+    # Still bounded, so the original safety property holds -- under sustained
+    # overload it drops rather than growing without limit or blocking the read
+    # loop. maxlen 8 is ~16 ms of backlog at 500 Hz. deque append/popleft are
+    # atomic under the GIL, so no lock is needed on this path.
+    _PUB_Q_MAX = 8
+    _pub_q = deque(maxlen=_PUB_Q_MAX)
     _pub_tag = [0]
+    # Accounting for the last unmeasured hop. _d_pub (read loop) counts states
+    # OFFERED to the slot; the slot is latest-wins, so a state the pub worker
+    # never samples is silently overwritten and never reaches ZMQ. Until now
+    # nothing counted that: _d_pub said "offered", drop= said "ZMQ refused",
+    # and the difference between them had no name.
+    #   _pub_sent    -> publish() calls actually made
+    #   _pub_coalesced -> states overwritten before the worker sampled them,
+    #                     measured directly as the tag gap (the tag is a
+    #                     monotonic counter, so a jump of N skipped N-1 states)
+    _pub_sent = [0]
+    _pub_coalesced = [0]
 
     last_cmd_seq = -1
     last_gate = None
@@ -241,7 +270,16 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
     # (= publishes). arm_new >> pub means the arm+gripper sync gate is the limiter
     # (host-side, fixable); arm_new ~= pub ~= 330 means the SDK/firmware only yields
     # ~330 distinct states. Pure counting, no control-path change; device_io_diag=false disables.
-    _diag = bool(cfg.get('device_io_diag', False))
+    # Env fallback. In REAL mode the launcher re-renders launchers/configs/*.json
+    # from site.yaml on every start (_launch_servers_impl: "site.yaml is
+    # authoritative"), so hand-editing the rendered config -- which is what
+    # state-rate-measurement.md tells you to do -- is silently reverted before
+    # launch. site.yaml itself has no device_io_diag field and _build_arm_cfg has
+    # no passthrough, so there is no config route at all in real mode. The env var
+    # gives one, without adding a diagnostic-only knob to the site schema.
+    _diag = (bool(cfg.get('device_io_diag', False))
+             or os.environ.get('SODA_DEVICE_IO_DIAG', '').strip().lower()
+             not in ('', '0', 'false', 'no', 'off'))
     _d_loop = _d_read = _d_aok = _d_gok = _d_arm = _d_grip = _d_pub = 0
     _d_drainsum = _d_drainn = 0
     _d_prev_arm = _d_prev_grip = None
@@ -287,12 +325,15 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
             pass
         _ph = float(cfg.get('device_io_pub_hz', max(2.0 * cfg['control_hz'], 1000.0)))
         _per = 1.0 / max(_ph, 1.0)
-        _lt = 0
         while not stop_flag.is_set():
             _t0 = time.perf_counter()
-            _sl = _pub_slot[0]
-            if _sl is not None and _sl[0] != _lt and pub is not None:
-                _lt = _sl[0]
+            # Drain everything queued since the last wakeup, not just the newest.
+            while pub is not None:
+                try:
+                    _sl = _pub_q.popleft()
+                except IndexError:
+                    break
+                _pub_sent[0] += 1
                 try:
                     pub.publish(pub_side, _sl[1], _sl[2], _sl[3], _sl[4])
                 except Exception:
@@ -410,7 +451,12 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                             # serialize/send inline -- that made read+pub serial (~2ms/
                             # iter -> ~416Hz) and dropped frames during the send window.
                             _pub_tag[0] += 1
-                            _pub_slot[0] = (_pub_tag[0], a_ts, pos, vel, eff)
+                            # deque(maxlen) discards the OLDEST on overflow, so
+                            # count that here -- it is the only remaining way a
+                            # state can be lost before reaching ZMQ.
+                            if len(_pub_q) == _PUB_Q_MAX:
+                                _pub_coalesced[0] += 1
+                            _pub_q.append((_pub_tag[0], a_ts, pos, vel, eff))
             except Exception:
                 pass
 
@@ -477,10 +523,20 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
         # #6 diag report (every ~2s), per arm side
         if _diag and (time.perf_counter() - _d_last) >= 2.0:
             _e = time.perf_counter() - _d_last
+            # drop = frames the PUB socket refused on a full SNDHWM. NOTE the unit:
+            # `pub` counts publish() CALLS, each of which emits 4 topic frames
+            # (pos/vel/eff/joint_states), so a drop rate of ~4N/s corresponds to N
+            # lost states/s. drop>0 means the shortfall a subscriber sees is OURS
+            # (raise SNDHWM); drop==0 means we sent everything and the loss is
+            # downstream, in transport or in the subscriber.
+            _d_drop = pub.take_dropped() if pub is not None else 0
             print(f"\033[35m[device_io diag {pub_side}] loop={_d_loop/_e:.0f} "
                   f"aok={_d_aok/_e:.0f} gok={_d_gok/_e:.0f} arm_new={_d_arm/_e:.0f} "
                   f"grip_new={_d_grip/_e:.0f} pub={_d_pub/_e:.0f} Hz "
+                  f"sent={_pub_sent[0]/_e:.0f} coal={_pub_coalesced[0]/_e:.0f} "
+                  f"drop={_d_drop/_e:.0f}/s "
                   f"min_dt={_d_mindelta:.2f}ms drain={_d_drainsum / max(_d_drainn, 1):.1f}\033[0m", flush=True)
+            _pub_sent[0] = _pub_coalesced[0] = 0
             _d_loop = _d_read = _d_aok = _d_gok = _d_arm = _d_grip = _d_pub = 0
             _d_drainsum = _d_drainn = 0
             _d_mindelta = 1e9

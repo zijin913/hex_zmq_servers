@@ -131,6 +131,15 @@ class StatePublisher:
         self._sock.setsockopt(zmq.LINGER, 0)
         self._sock.bind(f"tcp://{ip}:{int(port)}")
         self._subs = set()   # subscribed topic prefixes with >=1 live subscriber
+        # Frames the socket refused because SNDHWM was full. These are dropped
+        # BY DESIGN (bounded queue -> drop, never block the control loop), but
+        # until now they were dropped SILENTLY: the caller's own counter
+        # increments before publish() is even called, so a diagnostic that reads
+        # it reports frames handed over, not frames sent. That made the last hop
+        # of the state path -- publisher socket to subscriber -- the one segment
+        # with no instrumentation at all. Counting them separates "we never sent
+        # it" from "we sent it and it was lost downstream".
+        self._dropped = 0
 
     def publish(self, side, device_ts, pos, vel, eff, tau_ext=None, ee=None, ee_wrench=None):
         # host_ts on the shared system-wide monotonic clock -> cross-arm alignment.
@@ -146,16 +155,27 @@ class StatePublisher:
             try:
                 self._sock.send_multipart([tp, pl], flags=zmq.NOBLOCK)
             except zmq.Again:
-                pass  # subscriber slow/absent: drop this frame, keep the loop free
+                # subscriber slow/absent: drop this frame, keep the loop free
+                self._dropped += 1
             except Exception:
                 return  # never let a telemetry send error kill the control loop
+
+    def take_dropped(self) -> int:
+        """Frames refused by SNDHWM since the last call, then reset.
+
+        Read-and-clear so a periodic diagnostic can print a rate without
+        keeping its own baseline. Cheap: one int read plus a store.
+        """
+        n = self._dropped
+        self._dropped = 0
+        return n
 
     def _send_raw(self, tp: bytes, device_ts: float, payload: bytes):
         head = np.array([device_ts, time.monotonic()], dtype=np.float64).tobytes()
         try:
             self._sock.send_multipart([tp, head + payload], flags=zmq.NOBLOCK)
         except zmq.Again:
-            pass
+            self._dropped += 1
 
     def publish_jpeg(self, name: str, device_ts: float, jpg_bytes: bytes):
         """Camera frame topic ``cam/<name>/image/compressed`` (≈ sensor_msgs/CompressedImage):

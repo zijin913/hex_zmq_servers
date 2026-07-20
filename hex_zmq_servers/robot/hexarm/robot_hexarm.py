@@ -289,6 +289,12 @@ class HexRobotHexarm(HexRobotBase):
             "pub_port": self.__pub_port,
             "side": self.__pub_side,
             "device_io_rt_prio": int(robot_config.get("device_io_rt_prio", 20)),
+            # R2 diagnostic (docs/developer/rt/state-rate-measurement.md). This was
+            # documented as a config key and read by hexarm_device_io, but never
+            # plumbed into __io_cfg -- so the key could be set anywhere and would
+            # never reach the child, and the documented R2 procedure could not
+            # work. Same class of gap as device_io_pub_hz.
+            "device_io_diag": bool(robot_config.get("device_io_diag", False)),
         }
         self.__io_stop = _MP.Event()
         self.__io_clear_req = _MP.Value('i', 0)
