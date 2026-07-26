@@ -7,6 +7,7 @@
 ################################################################
 
 import threading
+import time
 import numpy as np
 from collections import deque
 
@@ -296,8 +297,15 @@ class HexCamRealsense(HexCamBase):
         except Exception:
             pass
 
-    def __pub_jpg(self, ts, color_arr):
-        """Publish one frame on cam/<name>/image/compressed (+ throttled camera_info). Failures drop."""
+    def __pub_jpg(self, ts, color_arr, host_ts=None):
+        """Publish one frame on cam/<name>/image/compressed (+ throttled camera_info). Failures drop.
+
+        host_ts is the frame-arrival RECEIPT stamp (time.monotonic, taken when the
+        frame reached this process, before the JPEG encode). Published verbatim so
+        the header's host_ts reflects arrival, not send -- same clock and same
+        semantics as the arm's host_ts, so a subscriber can align camera against
+        arm on host_ts directly. None falls back to send-time inside StatePublisher.
+        """
         if self.__state_pub is None or color_arr is None:
             return
         if not self.__state_pub.jpeg_wanted(self.__pub_topic):
@@ -309,7 +317,8 @@ class HexCamRealsense(HexCamBase):
                 return
             dts = (float(ts.get("s", 0)) + float(ts.get("ns", 0)) * 1e-9
                    if isinstance(ts, dict) else float(ts))
-            self.__state_pub.publish_jpeg(self.__pub_topic, dts, buf.tobytes())
+            self.__state_pub.publish_jpeg(self.__pub_topic, dts, buf.tobytes(),
+                                          host_ts=host_ts)
             n = self.__cam_info_tick
             self.__cam_info_tick = n + 1
             if n % 30 == 0:
@@ -318,7 +327,8 @@ class HexCamRealsense(HexCamBase):
                     f"cam/{self.__pub_topic}/camera_info", dts,
                     {"width": int(w), "height": int(h),
                      "fps": int(self.__frame_rate),
-                     "format": "jpeg/bgr8", "frame": self.__pub_topic})
+                     "format": "jpeg/bgr8", "frame": self.__pub_topic},
+                    host_ts=host_ts)
         except Exception:
             pass
 
@@ -363,6 +373,11 @@ class HexCamRealsense(HexCamBase):
                 self.__last_color = None
                 self.__last_depth = None
 
+            # RECEIPT stamp: this pair is now in-process. time.monotonic() to match
+            # the arm's host_ts clock; the PUB path publishes it verbatim (no queue
+            # on the camera PUB path, so this is essentially capture-to-publish).
+            _recv_host_ts = time.monotonic()
+
             # Bias-correct the timestamp
             cur_ns = hex_zmq_ts_now()
             try:
@@ -384,7 +399,7 @@ class HexCamRealsense(HexCamBase):
             depth_arr = np.asanyarray(depth.get_data()).copy()
             if rgb_q is not None:
                 rgb_q.append((ts, rgb_count, color_arr))
-            self.__pub_jpg(ts, color_arr)
+            self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
             if depth_q is not None:
                 depth_q.append((ts, depth_count, depth_arr))
         except Exception as exc:
@@ -458,6 +473,9 @@ class HexCamRealsense(HexCamBase):
                         f"wait_for_frames failed: {exc}")
                 continue
 
+            # RECEIPT stamp: wait_for_frames just returned this frame. time.monotonic()
+            # to match the arm's host_ts clock; published verbatim by the PUB path.
+            _recv_host_ts = time.monotonic()
             cur_ns = hex_zmq_ts_now()
             try:
                 sens_us = aligned.get_frame_metadata(
@@ -478,7 +496,7 @@ class HexCamRealsense(HexCamBase):
                 color_arr = np.asanyarray(color.get_data()).copy()
                 rgb_queue.append((ts, rgb_count, color_arr))
                 rgb_count = (rgb_count + 1) % self._max_seq_num
-                self.__pub_jpg(ts, color_arr)
+                self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
             depth = aligned.get_depth_frame()
             if depth:
                 depth_queue.append((ts, depth_count,

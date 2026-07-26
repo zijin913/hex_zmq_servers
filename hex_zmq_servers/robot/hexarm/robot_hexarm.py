@@ -393,8 +393,8 @@ class HexRobotHexarm(HexRobotBase):
             _threading.Thread(target=_prof_dump, name="loop_prof",
                               daemon=True).start()
         # --- optional RT control path (SODA_RT_CONTROL=1): pin THIS control loop
-        # (the now-light post-#6 loop) to an isolated core (left->4 / right->5, to
-        # match isolcpus=6,7) + SCHED_FIFO-80, and force the PUB decouple on so
+        # (the now-light post-#6 loop) to an isolated core (left->6 / right->7 under
+        # isolcpus=2,3,6,7) + SCHED_FIFO-80, and force the PUB decouple on so
         # the serialize/send never blocks the 1 kHz loop. Best-effort + guarded:
         # any failure logs and falls back to normal scheduling — a physical arm
         # must never fail to start over RT setup. Requires the box provisioned by
@@ -747,18 +747,32 @@ class HexRobotHexarm(HexRobotBase):
         so the ZMQ clients see an uninterrupted state/command path across an SDK
         crash. Returns the handshake dict."""
         with self.__io_lock:
-            # Put the TIMING-CRITICAL device-io (SDK _periodic/KCP watchdog-feed) on
-            # cores 6/7 -- the HT siblings of the arm-compute cores 2/3, the exact
-            # placement that gave the single-process 496Hz -- and leave the now-light
-            # control loop on 4/5. Cores 4/5 are HT siblings of the busy cameras on
-            # 0/1, so the device-io must NOT go there (that measured ~387 vs ~416
-            # floating). Override per-side with SODA_RT_DEVICE_CORE="<left>,<right>".
+            # Pin device-io (SDK _periodic/KCP watchdog-feed) to the HT SIBLING of
+            # this arm's control core, so control (FIFO-80) and device-io (FIFO-20)
+            # co-locate on ONE dedicated isolated physical core (control 6/7 ->
+            # device-io 2/3 under isolcpus=2,3,6,7) and stay off the busy
+            # camera/housekeeping cores. SODA_RT_DEVICE_CORE="<left>,<right>" overrides.
             if os.environ.get("SODA_RT_CONTROL"):
                 _dc = os.environ.get("SODA_RT_DEVICE_CORE", "")
                 _cs = [int(x) for x in _dc.split(",") if x.strip()]
-                self.__io_cfg["device_io_cpu"] = (
-                    (_cs[0] if self.__pub_side == "left" else _cs[-1]) if _cs
-                    else (4 if self.__pub_side == "left" else 5))
+                if _cs:
+                    self.__io_cfg["device_io_cpu"] = (
+                        _cs[0] if self.__pub_side == "left" else _cs[-1])
+                else:
+                    # Default = HT sibling of the control core (read from /sys), so
+                    # no SODA_RT_DEVICE_CORE export is needed for correct placement.
+                    # Falls back to the control core itself if the sibling list is
+                    # unreadable (degraded but safe).
+                    _rc = os.environ.get("SODA_RT_CORE")
+                    _ctrl = int(_rc) if _rc else (6 if self.__pub_side == "left" else 7)
+                    try:
+                        _sl = open("/sys/devices/system/cpu/cpu%d/topology/"
+                                   "thread_siblings_list" % _ctrl).read().strip()
+                        _sib = next((int(x) for x in _sl.replace("-", ",").split(",")
+                                     if x and int(x) != _ctrl), _ctrl)
+                    except Exception:
+                        _sib = _ctrl
+                    self.__io_cfg["device_io_cpu"] = _sib
             init_q = _MP.Queue()
             self.__io_proc = _MP.Process(
                 target=run_device_io,

@@ -335,7 +335,10 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                     break
                 _pub_sent[0] += 1
                 try:
-                    pub.publish(pub_side, _sl[1], _sl[2], _sl[3], _sl[4])
+                    # _sl[5] = receipt host_ts captured in the read loop before this
+                    # queue; publish it verbatim rather than stamping send-time here.
+                    pub.publish(pub_side, _sl[1], _sl[2], _sl[3], _sl[4],
+                                host_ts=_sl[5])
                 except Exception:
                     pass
             _dt = time.perf_counter() - _t0
@@ -409,6 +412,13 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                 # _periodic DOWN-send thread -> ~470 sends/s -> firmware 470. One pop
                 # each; the loop now sleeps and _periodic gets the GIL to send ~500.
                 a = arm.get_simple_motor_status()
+                # RECEIPT stamp: the first instant this process has the frame, taken
+                # BEFORE the read-loop -> pub-worker queue. Published verbatim (the pub
+                # worker does NOT re-stamp), so host_ts is free of queue-depth/drain
+                # jitter -- its only error is up to one read-loop period (~1 ms). Uses
+                # time.monotonic() to match the camera's host_ts clock exactly, so arm
+                # and camera stamps are cross-comparable on one NUC.
+                _recv_host_ts = time.monotonic()
                 _drain = 0
                 g = gripper.get_simple_motor_status() if gripper is not None else None
                 if _diag:
@@ -456,7 +466,8 @@ def run_device_io(cfg: dict, state_name: str, cmd_name: str, stop_flag,
                             # state can be lost before reaching ZMQ.
                             if len(_pub_q) == _PUB_Q_MAX:
                                 _pub_coalesced[0] += 1
-                            _pub_q.append((_pub_tag[0], a_ts, pos, vel, eff))
+                            _pub_q.append((_pub_tag[0], a_ts, pos, vel, eff,
+                                           _recv_host_ts))
             except Exception:
                 pass
 

@@ -17,7 +17,10 @@ keywords = ["hex_zmq_servers"]
 requires-python = ">=3.10"
 dependencies = [
   "pyzmq>=27.0.1",
-  "hex_device>=1.3.17,<1.4.0",
+  # NOTE: production (SODA requirements.txt) pins hex_device==1.4.6 — the device-io
+  # split runs against the 1.4.x SDK. The old "<1.4.0" bound only went unnoticed
+  # because the image installs this package with --no-deps.
+  "hex_device>=1.3.17,<1.5.0",
   "hex_robo_utils>=0.3.0,<0.4.0",
 ]
 classifiers = [

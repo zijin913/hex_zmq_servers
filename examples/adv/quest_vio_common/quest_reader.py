@@ -11,8 +11,8 @@ get_pose() 接口：(T, timestamp, count, gripper, clutch, home)。
     2. 安装 APK (git-lfs pull 取回 teleop-debug.apk，随后 OculusReader 构造时自动装)
 
 按键映射 (在 __init__ 里可覆盖):
-    clutch  = RTr / LTr   (食指扳机布尔值，按住时遥操生效)
-    gripper = rightGrip / leftGrip   (握把扳机 0.0~1.0，握紧=夹爪闭合)
+    clutch  = rightGrip / leftGrip   (握把，握住时遥操生效；阈值 0.5)
+    gripper = RTr / LTr   (食指扳机 0.0~1.0，扣下=夹爪闭合)
     home    = A / X       (右手 A，左手 X)
 
 使用:
@@ -69,8 +69,16 @@ class QuestReader:
         self._owns_reader = shared_reader is None
 
         # 按键默认映射
-        self.clutch_key = clutch_key or ("RTr" if hand == "right" else "LTr")
-        self.gripper_key = gripper_key or ("rightGrip" if hand == "right" else "leftGrip")
+        # Key mapping — matches the teleop docstring (Grip=clutch, Trigger=gripper).
+        # PREVIOUSLY these were swapped: clutch read the Trigger and the gripper read
+        # the Grip. The gripper-on-Grip mapping made the gripper command track the
+        # analog Grip force, which is also held for clutch, so its natural wobble
+        # jittered the gripper 0<->1 (POSITION mode's velocity limit hid it; MIT
+        # exposed it as shake). Now: clutch = Grip (held to teleop), gripper =
+        # Trigger (index, linear analog — good for a proportional gripper).
+        self.clutch_key = clutch_key or ("rightGrip" if hand == "right" else "leftGrip")
+        self.gripper_key = gripper_key or ("RTr" if hand == "right" else "LTr")
+        self.clutch_thresh = 0.5   # analog Grip must exceed this to engage teleop
         self.home_key = home_key or ("A" if hand == "right" else "X")
 
         if shared_reader is not None:
@@ -85,6 +93,23 @@ class QuestReader:
         self._lock = threading.Lock()
         self._recv_count = 0
         self._last_signature = None  # 用变换矩阵的部分元素做指纹，判断是否为新帧
+        # Last GOOD button values. logcat parses intermittently drop a field (the
+        # 150 Hz teleop loop reads faster than the ~72 Hz Quest stream), and a
+        # missing field must be read as "no update", NOT as 0 -- returning 0 made
+        # the gripper command blink to open, which the fast MIT gripper chased as
+        # shake. We hold the last value on a dropout; a field that is PRESENT and 0
+        # is a genuine release and passes through.
+        self._last_gripper = 0.0
+        self._last_clutch = False
+        self._last_home = False
+        # Low-pass on the analog gripper (trigger). The trigger is a noisy analog
+        # signal and a human finger's force wobbles -- worst while gripping an
+        # object (the finger is pressing hard). Unfiltered, that wobble drove the
+        # gripper command 0.1<->1.0 and the fast MIT gripper chased it as shake.
+        # An EMA smooths the command while keeping it continuous (proportional).
+        # alpha in (0,1]: lower = smoother/laggier. 1.0 = no filter.
+        self._grip_ema = 0.0
+        self._grip_alpha = 0.25
 
     def get_pose(self):
         """
@@ -100,7 +125,10 @@ class QuestReader:
         transforms, buttons = self._reader.get_transformations_and_buttons()
 
         if not transforms or self._tkey not in transforms:
-            return None, 0.0, self._recv_count, 0.0, False, False
+            # dropout: no fresh pose. hold last button values (teleop skips the
+            # tick on T is None anyway, but keep them coherent for any caller).
+            return (None, 0.0, self._recv_count,
+                    self._last_gripper, self._last_clutch, self._last_home)
 
         T = np.asarray(transforms[self._tkey], dtype=np.float64).copy()
 
@@ -112,12 +140,30 @@ class QuestReader:
                 self._last_signature = sig
             count = self._recv_count
 
-        # 按键解析
-        gripper = _extract_analog(buttons.get(self.gripper_key, 0.0))
-        clutch = bool(buttons.get(self.clutch_key, False))
-        home = bool(buttons.get(self.home_key, False))
+        # 按键解析 — a field PRESENT in this parse is a real reading (0 = released);
+        # a field ABSENT is a dropout -> hold the last value (don't read as 0).
+        if self.gripper_key in buttons:
+            _raw = float(np.clip(_extract_analog(buttons[self.gripper_key]), 0.0, 1.0))
+            # EMA low-pass to reject finger/analog wobble (esp. while gripping).
+            self._grip_ema += self._grip_alpha * (_raw - self._grip_ema)
+            gripper = self._grip_ema
+            self._last_gripper = gripper
+        else:
+            gripper = self._last_gripper
+        # clutch reads the analog Grip; threshold so a light touch / wobble doesn't
+        # engage or chatter. Hold on dropout.
+        if self.clutch_key in buttons:
+            clutch = _extract_analog(buttons[self.clutch_key]) > self.clutch_thresh
+            self._last_clutch = clutch
+        else:
+            clutch = self._last_clutch
+        if self.home_key in buttons:
+            home = bool(buttons[self.home_key])
+            self._last_home = home
+        else:
+            home = self._last_home
 
-        return T, time.time(), count, float(np.clip(gripper, 0.0, 1.0)), clutch, home
+        return T, time.time(), count, gripper, clutch, home
 
     def close(self):
         # 只有"自己构造"的 reader 才负责关闭；共享模式下交给 owner

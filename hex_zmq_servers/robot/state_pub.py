@@ -141,13 +141,22 @@ class StatePublisher:
         # it" from "we sent it and it was lost downstream".
         self._dropped = 0
 
-    def publish(self, side, device_ts, pos, vel, eff, tau_ext=None, ee=None, ee_wrench=None):
-        # host_ts on the shared system-wide monotonic clock -> cross-arm alignment.
+    def publish(self, side, device_ts, pos, vel, eff, tau_ext=None, ee=None,
+                ee_wrench=None, host_ts=None):
+        # host_ts is the RECEIPT stamp: time.monotonic() taken by the caller at the
+        # first instant the NUC had this frame, BEFORE any handoff queue. Passing it
+        # in (rather than stamping here, at send) is deliberate -- stamping at send
+        # happens after the read-loop->pub-worker queue, so queue-depth jitter would
+        # sawtooth the stamp. A receipt stamp makes constant transport delay harmless
+        # and keeps the residual jitter at the read-loop period (<=~1 ms). Callers
+        # that pass None fall back to send-time (legacy behaviour, e.g. sim).
+        #
         # This is OPTIONAL telemetry: it must NEVER crash or stall the device control
         # loop (see module docstring). Swallow ALL errors, not just zmq.Again, so a
         # malformed arg (e.g. a bad ts/ee shape) can't take down the arm server.
         try:
-            frames = encode_frames(side, device_ts, time.monotonic(),
+            _hts = host_ts if host_ts is not None else time.monotonic()
+            frames = encode_frames(side, device_ts, _hts,
                                    pos, vel, eff, tau_ext=tau_ext, ee=ee, ee_wrench=ee_wrench)
         except Exception:
             return
@@ -170,17 +179,21 @@ class StatePublisher:
         self._dropped = 0
         return n
 
-    def _send_raw(self, tp: bytes, device_ts: float, payload: bytes):
-        head = np.array([device_ts, time.monotonic()], dtype=np.float64).tobytes()
+    def _send_raw(self, tp: bytes, device_ts: float, payload: bytes, host_ts=None):
+        # host_ts = caller's receipt stamp; None falls back to send-time. See publish().
+        _hts = host_ts if host_ts is not None else time.monotonic()
+        head = np.array([device_ts, _hts], dtype=np.float64).tobytes()
         try:
             self._sock.send_multipart([tp, head + payload], flags=zmq.NOBLOCK)
         except zmq.Again:
             self._dropped += 1
 
-    def publish_jpeg(self, name: str, device_ts: float, jpg_bytes: bytes):
+    def publish_jpeg(self, name: str, device_ts: float, jpg_bytes: bytes, host_ts=None):
         """Camera frame topic ``cam/<name>/image/compressed`` (≈ sensor_msgs/CompressedImage):
-        16-byte [device_ts, host_ts] header + JPEG bytes (bgr8-encoded)."""
-        self._send_raw(f"cam/{name}/image/compressed".encode(), device_ts, bytes(jpg_bytes))
+        16-byte [device_ts, host_ts] header + JPEG bytes (bgr8-encoded).
+        host_ts should be the frame-arrival receipt stamp (see publish())."""
+        self._send_raw(f"cam/{name}/image/compressed".encode(), device_ts,
+                       bytes(jpg_bytes), host_ts=host_ts)
 
     def _drain_subs(self):
         """Absorb any pending XPUB (un)subscribe notices into self._subs.
@@ -211,11 +224,11 @@ class StatePublisher:
         A newly-connected subscriber sees at most a ~1-frame startup delay."""
         return self.has_subscriber(f"cam/{name}/image/compressed".encode())
 
-    def publish_json(self, tp: str, device_ts: float, obj: dict):
+    def publish_json(self, tp: str, device_ts: float, obj: dict, host_ts=None):
         """Low-rate metadata topic (e.g. ``cam/<name>/camera_info`` ≈ sensor_msgs/CameraInfo):
         16-byte ts header + UTF-8 JSON."""
         import json
-        self._send_raw(tp.encode(), device_ts, json.dumps(obj).encode())
+        self._send_raw(tp.encode(), device_ts, json.dumps(obj).encode(), host_ts=host_ts)
 
     def close(self):
         try:
