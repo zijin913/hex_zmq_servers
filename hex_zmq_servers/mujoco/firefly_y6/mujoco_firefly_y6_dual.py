@@ -8,6 +8,7 @@
 import os
 import copy
 import threading
+import time
 import cv2
 import numpy as np
 from collections import deque
@@ -16,6 +17,7 @@ import mujoco
 from mujoco import viewer
 
 from ..mujoco_base import HexMujocoBase
+from ...cam.cam_base import CamFrame
 from ...zmq_base import (
     hex_ns_now,
     hex_zmq_ts_now,
@@ -338,17 +340,18 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
         # Initial placeholder frames
         empty_rgb = np.zeros((self.__height, self.__width, 3), dtype=np.uint8)
         empty_depth = np.zeros((self.__height, self.__width), dtype=np.uint16)
-        left_rgb_queue.append((init_ts, 0, empty_rgb.copy()))
-        left_depth_queue.append((init_ts, 0, empty_depth.copy()))
-        right_rgb_queue.append((init_ts, 0, empty_rgb.copy()))
-        right_depth_queue.append((init_ts, 0, empty_depth.copy()))
+        init_host_ts = time.monotonic()
+        left_rgb_queue.append(CamFrame(init_ts, 0, empty_rgb.copy(), init_host_ts))
+        left_depth_queue.append(CamFrame(init_ts, 0, empty_depth.copy(), init_host_ts))
+        right_rgb_queue.append(CamFrame(init_ts, 0, empty_rgb.copy(), init_host_ts))
+        right_depth_queue.append(CamFrame(init_ts, 0, empty_depth.copy(), init_host_ts))
         if self.__use_side_cam:
             side_empty_rgb = np.zeros(
                 (self.__side_height, self.__side_width, 3), dtype=np.uint8)
             side_empty_depth = np.zeros(
                 (self.__side_height, self.__side_width), dtype=np.uint16)
-            side_rgb_queue.append((init_ts, 0, side_empty_rgb))
-            side_depth_queue.append((init_ts, 0, side_empty_depth))
+            side_rgb_queue.append(CamFrame(init_ts, 0, side_empty_rgb, init_host_ts))
+            side_depth_queue.append(CamFrame(init_ts, 0, side_empty_depth, init_host_ts))
 
         while self._working.is_set() and not stop_event.is_set():
             states_trig_count += 1
@@ -447,12 +450,19 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
             img_trig_count += 1
             if img_trig_count >= self.__img_trig_thresh:
                 img_trig_count = 0
+                # One receipt stamp for the whole wrist block: these renders all
+                # come from the same physics state, so they genuinely share an
+                # acquisition instant. Same clock and same meaning as the real
+                # camera's stamp (cam_realsense) and the arm's (hexarm_device_io),
+                # which is what makes sim episodes align exactly like real ones.
+                cam_host_ts = time.monotonic()
 
                 # Left camera
                 if self.__left_rgb:
                     ts, rgb_img = self.__get_rgb("left_end_camera")
                     if rgb_img is not None:
-                        left_rgb_queue.append((ts, left_rgb_count, rgb_img))
+                        left_rgb_queue.append(
+                            CamFrame(ts, left_rgb_count, rgb_img, cam_host_ts))
                         left_rgb_count = (left_rgb_count +
                                           1) % self._max_seq_num
                         self.__pub_cam_jpg("left_wrist", ts, rgb_img)
@@ -460,7 +470,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                     ts, depth_img = self.__get_depth("left_end_camera")
                     if depth_img is not None:
                         left_depth_queue.append(
-                            (ts, left_depth_count, depth_img))
+                            CamFrame(ts, left_depth_count, depth_img, cam_host_ts))
                         left_depth_count = (left_depth_count +
                                             1) % self._max_seq_num
 
@@ -468,7 +478,8 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                 if self.__right_rgb:
                     ts, rgb_img = self.__get_rgb("right_end_camera")
                     if rgb_img is not None:
-                        right_rgb_queue.append((ts, right_rgb_count, rgb_img))
+                        right_rgb_queue.append(
+                            CamFrame(ts, right_rgb_count, rgb_img, cam_host_ts))
                         right_rgb_count = (right_rgb_count +
                                            1) % self._max_seq_num
                         self.__pub_cam_jpg("right_wrist", ts, rgb_img)
@@ -476,7 +487,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                     ts, depth_img = self.__get_depth("right_end_camera")
                     if depth_img is not None:
                         right_depth_queue.append(
-                            (ts, right_depth_count, depth_img))
+                            CamFrame(ts, right_depth_count, depth_img, cam_host_ts))
                         right_depth_count = (right_depth_count +
                                              1) % self._max_seq_num
 
@@ -484,11 +495,14 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
             side_img_trig_count += 1
             if self.__use_side_cam and side_img_trig_count >= side_img_trig_thresh:
                 side_img_trig_count = 0
+                # Side runs on its own, slower trigger, so it gets its own
+                # receipt stamp rather than reusing the wrist block's.
+                side_host_ts = time.monotonic()
                 if self.__left_rgb or self.__right_rgb:
                     ts, side_rgb_img = self.__get_rgb("side_camera")
                     if side_rgb_img is not None:
                         side_rgb_queue.append(
-                            (ts, side_rgb_count, side_rgb_img))
+                            CamFrame(ts, side_rgb_count, side_rgb_img, side_host_ts))
                         side_rgb_count = (side_rgb_count +
                                           1) % self._max_seq_num
                         self.__pub_cam_jpg("side", ts, side_rgb_img)
@@ -497,7 +511,7 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
                     ts, side_depth_img = self.__get_depth("side_camera")
                     if side_depth_img is not None:
                         side_depth_queue.append(
-                            (ts, side_depth_count, side_depth_img))
+                            CamFrame(ts, side_depth_count, side_depth_img, side_host_ts))
                         side_depth_count = (side_depth_count +
                                             1) % self._max_seq_num
 

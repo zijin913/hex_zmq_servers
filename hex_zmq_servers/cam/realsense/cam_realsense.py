@@ -11,7 +11,7 @@ import time
 import numpy as np
 from collections import deque
 
-from ..cam_base import HexCamBase
+from ..cam_base import HexCamBase, CamFrame
 from ...zmq_base import (
     hex_ns_now,
     hex_zmq_ts_now,
@@ -397,11 +397,15 @@ class HexCamRealsense(HexCamBase):
 
             color_arr = np.asanyarray(color.get_data()).copy()
             depth_arr = np.asanyarray(depth.get_data()).copy()
+            # The SAME receipt stamp goes to both transports. The PUB path
+            # already carried it; the REQ/REP queue used to drop it, which left
+            # every soda_os-side consumer (teleop, policy, recording) unable to
+            # say when a frame was captured.
             if rgb_q is not None:
-                rgb_q.append((ts, rgb_count, color_arr))
+                rgb_q.append(CamFrame(ts, rgb_count, color_arr, _recv_host_ts))
             self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
             if depth_q is not None:
-                depth_q.append((ts, depth_count, depth_arr))
+                depth_q.append(CamFrame(ts, depth_count, depth_arr, _recv_host_ts))
         except Exception as exc:
             hex_log(HEX_LOG_LEVEL["warn"],
                     f"HexCamRealsense callback error: {exc}")
@@ -494,13 +498,14 @@ class HexCamRealsense(HexCamBase):
             color = aligned.get_color_frame()
             if color:
                 color_arr = np.asanyarray(color.get_data()).copy()
-                rgb_queue.append((ts, rgb_count, color_arr))
+                rgb_queue.append(CamFrame(ts, rgb_count, color_arr, _recv_host_ts))
                 rgb_count = (rgb_count + 1) % self._max_seq_num
                 self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
             depth = aligned.get_depth_frame()
             if depth:
-                depth_queue.append((ts, depth_count,
-                                     np.asanyarray(depth.get_data()).copy()))
+                depth_queue.append(CamFrame(
+                    ts, depth_count,
+                    np.asanyarray(depth.get_data()).copy(), _recv_host_ts))
                 depth_count = (depth_count + 1) % self._max_seq_num
 
     def close(self):

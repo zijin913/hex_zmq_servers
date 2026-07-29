@@ -94,11 +94,10 @@ class HexCamRealsenseServer(HexCamServerBase):
         """Return the latest RGB+Depth plus any buffered IMU samples since last call."""
         try:
             if self._realtime_mode:
-                rgb_ts, rgb_count, rgb = self._rgb_queue[-1]
-                depth_ts, depth_count, depth = self._depth_queue[-1]
+                rgb_f, depth_f = self._rgb_queue[-1], self._depth_queue[-1]
             else:
-                rgb_ts, rgb_count, rgb = self._rgb_queue.popleft()
-                depth_ts, depth_count, depth = self._depth_queue.popleft()
+                rgb_f, depth_f = self._rgb_queue.popleft(), self._depth_queue.popleft()
+            rgb, depth = rgb_f.img, depth_f.img
         except IndexError:
             return {"cmd": "get_rgbd_imu_failed"}, None
         except Exception as e:
@@ -120,7 +119,8 @@ class HexCamRealsenseServer(HexCamServerBase):
 
         return {
             "cmd": "get_rgbd_imu_ok",
-            "ts": rgb_ts,
+            "ts": rgb_f.device_ts,
+            "host_ts": rgb_f.host_ts,
             "args": {
                 "rgb_shape": list(rgb.shape),
                 "rgb_dtype": str(rgb.dtype),
@@ -130,7 +130,7 @@ class HexCamRealsenseServer(HexCamServerBase):
                 "gyro_dtype": str(gyro.dtype),
                 "accel_shape": list(accel.shape),
                 "accel_dtype": str(accel.dtype),
-                "count": int(rgb_count),
+                "count": int(rgb_f.seq),
             }
         }, combined
 

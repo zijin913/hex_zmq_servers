@@ -11,11 +11,43 @@ import time
 import numpy as np
 from collections import deque
 from abc import abstractmethod
+from typing import Any, NamedTuple
 
 from ..device_base import HexDeviceBase
 from ..zmq_base import HexZMQClientBase, HexZMQServerBase
 
 from hex_robo_utils import HexRate
+
+
+class CamFrame(NamedTuple):
+    """One camera frame as it sits in a device -> server queue.
+
+    Carries BOTH of a frame's timestamps so neither can be lost on the way out:
+
+    ``device_ts`` — hex-ts dict, the capture instant (RealSense exposure via a
+    one-time bias, or the sim's tick clock). Fine for ordering inside one
+    stream; it drifts and every stream has its own bias, so never subtract it
+    across streams.
+
+    ``host_ts`` — ``time.monotonic()`` RECEIPT stamp, taken in the process that
+    owns the camera at the first instant the frame existed there, BEFORE this
+    queue. This is the cross-stream alignment axis: it is the same clock the arm
+    servers stamp their PUB frames with (``hexarm_device_io``), so an image and
+    a joint sample can be put on one timeline by subtracting host_ts values.
+    Stamp it at production; never re-derive it at send time — a stamp taken
+    after a queue picks up that queue's depth jitter and is no longer a
+    property of the frame.
+
+    ``seq`` is the per-stream monotone counter the REQ/REP dedup uses.
+
+    A NamedTuple rather than a bare tuple so every producer and consumer names
+    what it means, and so adding a field later cannot silently shift a slot."""
+
+    device_ts: Any
+    seq: int
+    img: np.ndarray
+    host_ts: float = 0.0
+
 
 NET_CONFIG = {
     "ip": "127.0.0.1",
@@ -201,6 +233,8 @@ class HexCamClientBase(HexZMQClientBase):
                 # monotonic per-frame seq so the newest=True dedup in get_rgb /
                 # get_depth / get_rgbd works (args was already consumed to
                 # unpack the buffer inside _get_rgbd_inner).
+                # Only "args" is replaced: "ts" and "host_ts" are the frame's
+                # own stamps and must reach the caller untouched.
                 self._frame_seq = (self._frame_seq + 1) % self._max_seq_num
                 hdr = {**hdr, "args": self._frame_seq}
                 self._rgbd_queue.append((hdr, rgb, depth))
@@ -245,26 +279,24 @@ class HexCamServerBase(HexZMQServerBase):
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
         try:
-            if depth_flag:
-                ts, count, img = self._depth_queue[
-                    -1] if self._realtime_mode else self._depth_queue.popleft(
-                    )
-            else:
-                ts, count, img = self._rgb_queue[
-                    -1] if self._realtime_mode else self._rgb_queue.popleft()
+            q = self._depth_queue if depth_flag else self._rgb_queue
+            frame = q[-1] if self._realtime_mode else q.popleft()
         except IndexError:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
         except Exception as e:
             print(f"\033[91m{recv_hdr['cmd']} failed: {e}\033[0m")
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
-        delta = (count - seq) % self._max_seq_num
+        delta = (frame.seq - seq) % self._max_seq_num
         if delta >= 0 and delta < 1e6:
+            # host_ts rides in the reply header next to ts. Both are properties
+            # of the FRAME, not of this reply, so neither is recomputed here.
             return {
                 "cmd": f"{recv_hdr['cmd']}_ok",
-                "ts": ts,
-                "args": count
-            }, img
+                "ts": frame.device_ts,
+                "host_ts": frame.host_ts,
+                "args": frame.seq
+            }, frame.img
         else:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
@@ -272,8 +304,8 @@ class HexCamServerBase(HexZMQServerBase):
         """Get both RGB and depth frames together."""
         try:
             # Get latest from both queues (they are pushed together by device)
-            rgb_ts, rgb_count, rgb = self._rgb_queue[-1] if self._realtime_mode else self._rgb_queue.popleft()
-            depth_ts, depth_count, depth = self._depth_queue[-1] if self._realtime_mode else self._depth_queue.popleft()
+            rgb_f = self._rgb_queue[-1] if self._realtime_mode else self._rgb_queue.popleft()
+            depth_f = self._depth_queue[-1] if self._realtime_mode else self._depth_queue.popleft()
         except IndexError:
             return {"cmd": "get_rgbd_failed"}, None
         except Exception as e:
@@ -281,18 +313,21 @@ class HexCamServerBase(HexZMQServerBase):
             return {"cmd": "get_rgbd_failed"}, None
 
         # Pack RGB and depth into single buffer
-        rgb_bytes = rgb.tobytes()
-        depth_bytes = depth.tobytes()
+        rgb_bytes = rgb_f.img.tobytes()
+        depth_bytes = depth_f.img.tobytes()
         combined = np.frombuffer(rgb_bytes + depth_bytes, dtype=np.uint8)
 
+        # RGB and depth of one capture are pushed together and share a stamp;
+        # the rgb frame's is the pair's.
         return {
             "cmd": "get_rgbd_ok",
-            "ts": rgb_ts,
+            "ts": rgb_f.device_ts,
+            "host_ts": rgb_f.host_ts,
             "args": {
-                "rgb_shape": list(rgb.shape),
-                "rgb_dtype": str(rgb.dtype),
-                "depth_shape": list(depth.shape),
-                "depth_dtype": str(depth.dtype),
+                "rgb_shape": list(rgb_f.img.shape),
+                "rgb_dtype": str(rgb_f.img.dtype),
+                "depth_shape": list(depth_f.img.shape),
+                "depth_dtype": str(depth_f.img.dtype),
             }
         }, combined
 

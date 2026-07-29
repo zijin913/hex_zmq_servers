@@ -362,26 +362,24 @@ class HexMujocoServerBase(HexZMQServerBase):
         depth_flag = split_cmd[1] == "depth"
 
         try:
-            if depth_flag:
-                ts, count, img = self._depth_queue[
-                    -1] if self._realtime_mode else self._depth_queue.popleft(
-                    )
-            else:
-                ts, count, img = self._rgb_queue[
-                    -1] if self._realtime_mode else self._rgb_queue.popleft()
+            q = self._depth_queue if depth_flag else self._rgb_queue
+            frame = q[-1] if self._realtime_mode else q.popleft()
         except IndexError:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
         except Exception as e:
             print(f"\033[91m{recv_hdr['cmd']} failed: {e}\033[0m")
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
-        delta = (count - seq) % self._max_seq_num
+        delta = (frame.seq - seq) % self._max_seq_num
         if delta >= 0 and delta < 1e6:
+            # Same header contract as the real camera server (cam_base): the
+            # frame's own capture and receipt stamps, neither recomputed here.
             return {
                 "cmd": f"{recv_hdr['cmd']}_ok",
-                "ts": ts,
-                "args": count
-            }, img
+                "ts": frame.device_ts,
+                "host_ts": frame.host_ts,
+                "args": frame.seq
+            }, frame.img
         else:
             return {"cmd": f"{recv_hdr['cmd']}_failed"}, None
 
