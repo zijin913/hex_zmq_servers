@@ -88,7 +88,12 @@ class QuestReader:
         # clutch_thresh below is what makes it so.
         self.clutch_key = clutch_key or ("rightGrip" if hand == "right" else "leftGrip")
         self.gripper_key = gripper_key or ("rightTrig" if hand == "right" else "leftTrig")
-        self.clutch_thresh = 0.5   # analog Grip must exceed this to engage teleop
+        # Clutch hysteresis: engage above 0.6, release below 0.4. A single
+        # 0.5 threshold let a grip resting near it flip at the Quest frame
+        # rate — under hold-to-intervene every flip is a policy<->human
+        # authority handoff, so chatter here is chatter on the arms.
+        self.clutch_on_thresh = 0.6    # analog Grip must exceed this to ENGAGE
+        self.clutch_off_thresh = 0.4   # ... and drop below this to RELEASE
         self.home_key = home_key or ("A" if hand == "right" else "X")
 
         if shared_reader is not None:
@@ -181,7 +186,9 @@ class QuestReader:
         # clutch reads the analog Grip; threshold so a light touch / wobble doesn't
         # engage or chatter. Hold on dropout.
         if self.clutch_key in buttons:
-            clutch = _extract_analog(buttons[self.clutch_key]) > self.clutch_thresh
+            _g = _extract_analog(buttons[self.clutch_key])
+            _th = self.clutch_off_thresh if self._last_clutch else self.clutch_on_thresh
+            clutch = _g > _th
             self._last_clutch = clutch
         else:
             clutch = self._last_clutch
