@@ -76,8 +76,18 @@ class QuestReader:
         # jittered the gripper 0<->1 (POSITION mode's velocity limit hid it; MIT
         # exposed it as shake). Now: clutch = Grip (held to teleop), gripper =
         # Trigger (index, linear analog — good for a proportional gripper).
+        #
+        # SAME PHYSICAL BUTTONS, different readouts. The APK reports the index
+        # trigger TWICE: 'RTr'/'LTr' is the BOOLEAN press (buttons_parser.py:11)
+        # and 'rightTrig'/'leftTrig' is the ANALOG pull in [0,1]
+        # (buttons_parser.py:16). The gripper bound the boolean, so despite the
+        # comment above promising "linear analog" the command was only ever 0 or
+        # 1, softened by the EMA below into a ramp between two endpoints — not a
+        # proportional grip. Bind the analog readout of the SAME trigger.
+        # The clutch deliberately stays BINARY: it is an on/off engage, and
+        # clutch_thresh below is what makes it so.
         self.clutch_key = clutch_key or ("rightGrip" if hand == "right" else "leftGrip")
-        self.gripper_key = gripper_key or ("RTr" if hand == "right" else "LTr")
+        self.gripper_key = gripper_key or ("rightTrig" if hand == "right" else "leftTrig")
         self.clutch_thresh = 0.5   # analog Grip must exceed this to engage teleop
         self.home_key = home_key or ("A" if hand == "right" else "X")
 
@@ -110,6 +120,19 @@ class QuestReader:
         # alpha in (0,1]: lower = smoother/laggier. 1.0 = no filter.
         self._grip_ema = 0.0
         self._grip_alpha = 0.25
+        # Endpoint conditioning for the ANALOG trigger. A physical trigger rarely
+        # spans exactly [0,1]: it idles a hair above 0 and often tops out just
+        # below 1. That did not matter while this read the boolean (0 or 1
+        # exactly), but on the analog readout it does, in both directions:
+        #   - an idle offset creeps the gripper closed with nobody touching it;
+        #   - a top-out below 1.0 means a FULL pull never commands a full close,
+        #     which presents exactly as "the gripper will not close".
+        # So rescale [deadband, saturate] onto [0,1] and clip. Defaults are near
+        # no-ops for a clean trigger; widen them if `--probe-trigger` (see
+        # __main__) shows this controller does not reach the endpoints.
+        self._grip_deadband = 0.02   # at/below this -> fully open
+        self._grip_saturate = 0.98   # at/above this -> fully closed
+        self._last_grip_raw = 0.0    # last RAW trigger reading (diagnostics)
 
     def get_pose(self):
         """
@@ -144,6 +167,11 @@ class QuestReader:
         # a field ABSENT is a dropout -> hold the last value (don't read as 0).
         if self.gripper_key in buttons:
             _raw = float(np.clip(_extract_analog(buttons[self.gripper_key]), 0.0, 1.0))
+            self._last_grip_raw = _raw   # pre-conditioning, for --probe-trigger
+            # Rescale the trigger's usable span onto a full [0,1] so a released
+            # trigger is exactly open and a fully-pulled one is exactly closed.
+            _span = max(self._grip_saturate - self._grip_deadband, 1e-6)
+            _raw = float(np.clip((_raw - self._grip_deadband) / _span, 0.0, 1.0))
             # EMA low-pass to reject finger/analog wobble (esp. while gripping).
             self._grip_ema += self._grip_alpha * (_raw - self._grip_ema)
             gripper = self._grip_ema
@@ -211,12 +239,40 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hand", choices=["left", "right"], default="right")
     parser.add_argument("--ip", type=str, default=None, help="Wi-Fi IP (USB 若不指定)")
+    parser.add_argument("--probe-trigger", action="store_true",
+                        help="Measure the trigger's RAW endpoints. Release it fully, "
+                             "then pull it fully, and read off min/max. If min > "
+                             "_grip_deadband or max < _grip_saturate, widen those.")
     args = parser.parse_args()
 
     reader = QuestReader(hand=args.hand, ip_address=args.ip)
+
+    if args.probe_trigger:
+        print(f"探测扳机端点 (key={reader.gripper_key})  —  先完全松开，再完全扣死。Ctrl+C 结束")
+        lo, hi = 1.0, 0.0
+        try:
+            while True:
+                reader.get_pose()
+                r = reader._last_grip_raw
+                lo, hi = min(lo, r), max(hi, r)
+                print(f"\r  raw={r:.4f}   观测到 min={lo:.4f}  max={hi:.4f}", end="", flush=True)
+                time.sleep(0.03)
+        except KeyboardInterrupt:
+            print(f"\n\n  min={lo:.4f}  max={hi:.4f}")
+            print(f"  当前 deadband={reader._grip_deadband}  saturate={reader._grip_saturate}")
+            if lo > reader._grip_deadband:
+                print(f"  ⚠ 松开时 raw 不为 0 → 把 _grip_deadband 调到 ≥ {lo:.3f}，否则夹爪会自己爬")
+            if hi < reader._grip_saturate:
+                print(f"  ⚠ 扣死时 raw 到不了 1 → 把 _grip_saturate 调到 ≤ {hi:.3f}，否则永远合不拢")
+            if lo <= reader._grip_deadband and hi >= reader._grip_saturate:
+                print("  ✓ 端点正常，默认值不用改")
+        finally:
+            reader.close()
+        raise SystemExit(0)
+
     print("等待 Quest 数据... (Ctrl+C 退出)")
     print("  移动控制器 → 看 pos 变化")
-    print("  按住扳机(clutch=True) / 握紧握把(gripper→1.0) / 按 A/X(home=True)")
+    print("  握紧握把(clutch=ON) / 扣食指扳机(gripper 0.00→1.00 连续) / 按 A/X(home=True)")
 
     last_count = 0
     try:
