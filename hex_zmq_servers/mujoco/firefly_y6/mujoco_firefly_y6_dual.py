@@ -29,6 +29,41 @@ from ...hex_launch import hex_log, HEX_LOG_LEVEL
 from ...robot.mit_control import MitArmSafety
 from hex_robo_utils import HexCtrlUtilMitJoint as CtrlUtil
 
+def apply_base_rpy(model, rpy_deg_left=None, rpy_deg_right=None) -> None:
+    """Overwrite the *_arm_mount body orientations from mount rpy (degrees).
+
+    site.yaml ``arms.<side>.base_rpy_deg`` is the single source of truth for the
+    mount orientation; the launcher threads it here as ``base_rpy_deg_left/right``
+    so an as-built tilt deviation is a site.yaml edit, never MJCF surgery. The
+    scene's own euler values are only the CAD nominal default. Convention matches
+    soda_os.config.site: URDF fixed-axis R = Rz(yaw)·Ry(pitch)·Rx(roll).
+
+    Requires the named mount bodies (scene_machine). Passing an rpy against a
+    scene without them (e.g. scene_dual) is a config/scene mismatch — the sim
+    would silently NOT match the machine it claims to predict, so fail loudly.
+    """
+    for rpy, bname in ((rpy_deg_left, "left_arm_mount"),
+                       (rpy_deg_right, "right_arm_mount")):
+        if rpy is None:
+            continue
+        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, bname)
+        if bid < 0:
+            raise ValueError(
+                f"base_rpy_deg configured but body {bname!r} not in this scene "
+                f"— use scene_machine (or drop the base_rpy override)")
+        r, p, y = (np.radians(float(a)) for a in rpy)
+        cr, sr, cp, sp, cy, sy = (np.cos(r), np.sin(r), np.cos(p),
+                                  np.sin(p), np.cos(y), np.sin(y))
+        R = np.array([
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp,     cp * sr,                cp * cr],
+        ])
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, R.ravel())
+        model.body_quat[bid] = quat
+
+
 MUJOCO_CONFIG = {
     "states_rate": 1000,
     "img_rate": 30,
@@ -75,6 +110,15 @@ class HexMujocoFireflyY6Dual(HexMujocoBase):
         model_path = os.path.join(os.path.dirname(__file__),
                                   f"model/{scene_name}.xml")
         self.__model = mujoco.MjModel.from_xml_path(model_path)
+        # Mount orientation from site.yaml (scene_machine): overwrite the CAD-
+        # nominal mount quats so the sim matches the as-built machine. Absent
+        # keys (bench scenes) change nothing.
+        _rpy_l = mujoco_config.get("base_rpy_deg_left")
+        _rpy_r = mujoco_config.get("base_rpy_deg_right")
+        if _rpy_l is not None or _rpy_r is not None:
+            apply_base_rpy(self.__model, _rpy_l, _rpy_r)
+            hex_log(HEX_LOG_LEVEL["info"],
+                    f"[sim] arm mount rpy from config: left={_rpy_l} right={_rpy_r}")
         self.__data = mujoco.MjData(self.__model)
         self.__sim_rate = int(1.0 / self.__model.opt.timestep)
 

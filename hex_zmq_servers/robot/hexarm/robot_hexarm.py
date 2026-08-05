@@ -198,6 +198,23 @@ class HexRobotHexarm(HexRobotBase):
         self.__gravity_comp = bool(robot_config.get("gravity_comp", False))
         self.__grav_scale = float(robot_config.get("gravity_comp_scale", 1.0))
 
+        # Gravity direction in THIS arm's base frame (m/s²). Flat mount =
+        # [0, 0, -9.81]; a tilted mount (full-machine chassis) gets a rotated
+        # vector rendered from site.yaml arms.<side>.base_rpy_deg. Direction
+        # feeds every model-based torque here — gravity FF, the client-death
+        # safe-hold float, tau_ext — so a wrong vector is a safety problem:
+        # validate loudly at startup instead of running with a broken model.
+        _gv = np.asarray(robot_config.get("gravity_vec", [0.0, 0.0, -9.81]),
+                         dtype=np.float64).ravel()
+        if _gv.shape != (3,) or not np.all(np.isfinite(_gv)):
+            raise ValueError(f"[hexarm] gravity_vec must be 3 finite numbers, got {_gv}")
+        if abs(np.linalg.norm(_gv) - 9.81) > 0.5:
+            raise ValueError(
+                f"[hexarm] |gravity_vec| = {np.linalg.norm(_gv):.3f} m/s² is not ~9.81 "
+                f"— gravity_vec is a rotated gravity vector, not a scale "
+                f"(use gravity_comp_scale for magnitude)")
+        self.__gravity_vec = _gv
+
         # <side>/wrench = ee_wrench_sign · J(q)^-T · tau_ext — quasi-static Cartesian
         # force estimate published on the state stream. Sign default +1 matches
         # tools/ee_wrench_check.py's raw solve; flip to -1 after the known-weight
@@ -243,10 +260,11 @@ class HexRobotHexarm(HexRobotBase):
                 self.__pin = pin
                 self.__grav_model = pin.buildModelFromUrdf(urdf)
                 self.__grav_data = self.__grav_model.createData()
-                self.__grav_model.gravity.linear = np.array([0.0, 0.0, -9.81])
+                self.__grav_model.gravity.linear = self.__gravity_vec
                 hex_log(HEX_LOG_LEVEL["info"],
                         f"[hexarm] pinocchio ON (gravity_comp={self.__gravity_comp} "
-                        f"scale={self.__grav_scale}, control_mode={self.__control_mode})")
+                        f"scale={self.__grav_scale}, control_mode={self.__control_mode}, "
+                        f"gravity_vec={self.__gravity_vec.tolist()})")
             except Exception as e:
                 print(f"\033[91m[hexarm] pinocchio init failed: {e}\033[0m")
                 self.__gravity_comp = False

@@ -66,8 +66,15 @@ def main():
     default_kd = np.array(cfg.get("mit_kd",
         [12.5, 12.5, 12.5, 6.0, 0.31, 0.31, 1.0]))
 
+    # Gravity in THIS arm's base frame (m/s²) — the whole zero-g loop is
+    # "command the modeled gravity torque", so a tilted mount (full-machine
+    # chassis) must supply the rotated vector here (rendered into the cli cfg
+    # from site.yaml base_rpy_deg). Flat-mount default matches DynUtil's own.
+    gravity_vec = np.asarray(cfg.get("gravity_vec", [0.0, 0.0, -9.81]),
+                             dtype=np.float64)
+
     hexarm_client = HexRobotHexarmClient(net_config=hexarm_net_cfg)
-    dyn_util = DynUtil(model_path, last_link)
+    dyn_util = DynUtil(model_path, last_link, gravity=gravity_vec)
 
     # wait servers to work
     if not wait_client_working(hexarm_client):
@@ -82,7 +89,7 @@ def main():
     control_hz = float(cfg.get("control_hz", 500))
 
     print(f"[zerog] kp_scale={kp_scale}, kd_scale={kd_scale}, "
-          f"control_hz={control_hz}")
+          f"control_hz={control_hz}, gravity_vec={gravity_vec.tolist()}")
 
     # work loop
     rate = HexRate(control_hz)

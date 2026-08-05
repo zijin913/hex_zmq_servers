@@ -87,7 +87,16 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
         self._pub_hz = float(net_config.get("pub_hz", 100.0))
         self._pub_sign = float(net_config.get("ee_wrench_sign", 1.0))
         self._state_pubs = {}
-        self._pub_fk = None
+        # Per-side gravity in the arm BASE frame for the tau_ext/wrench estimate.
+        # None = flat mount [0,0,-9.81]. Under a tilted mount (scene_dual bases
+        # rotated) set gravity_vec_left/right to match the site.yaml rendering —
+        # the estimator's URDF gravity, not MuJoCo's world gravity, is what the
+        # published tau_ext subtracts.
+        self._pub_gravity = {
+            "left":  net_config.get("gravity_vec_left"),
+            "right": net_config.get("gravity_vec_right"),
+        }
+        self._pub_fks = {}
         self._pub_stop = threading.Event()
         self._pub_thread = None
 
@@ -155,9 +164,11 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
             print(f"\033[93m[sim] state PUB bind failed: {e}\033[0m")
             return
         try:
-            self._pub_fk = EEPoseFK()     # ee_pose + wrench + gravity estimator
+            # One FK per side: gravity may differ per arm under a tilted mount.
+            self._pub_fks = {side: EEPoseFK(gravity=self._pub_gravity.get(side))
+                             for side in self._pub_ports}
         except Exception as e:
-            self._pub_fk = None           # pos/vel/eff/joint_states still publish
+            self._pub_fks = {}            # pos/vel/eff/joint_states still publish
             print(f"\033[93m[sim] ee_pose/tau_ext/wrench estimate off ({e})\033[0m")
         try:
             import cv2
@@ -191,7 +202,8 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
                 except (IndexError, TypeError, ValueError, KeyError):
                     continue
                 tau_ext = ee = ee_wrench = None
-                if self._pub_fk is not None:
+                fk = self._pub_fks.get(side)
+                if fk is not None:
                     sd = side.encode()
                     want_tau = pub.has_subscriber(sd + b"/tau_ext")
                     want_wr = pub.has_subscriber(sd + b"/wrench")
@@ -200,17 +212,17 @@ class HexMujocoFireflyY6DualServer(HexMujocoServerBase):
                     if want_tau or want_wr:
                         try:
                             tau_ext = eff.copy()
-                            tau_ext[:6] = eff[:6] - self._pub_fk.gravity(qa)
+                            tau_ext[:6] = eff[:6] - fk.gravity(qa)
                         except Exception:
                             tau_ext = None
                     if want_ee:
                         try:
-                            ee = self._pub_fk.compute(qa)
+                            ee = fk.compute(qa)
                         except Exception:
                             ee = None
                     if want_wr and tau_ext is not None:
                         try:
-                            ee_wrench = self._pub_fk.wrench(qa, tau_ext[:6], self._pub_sign)
+                            ee_wrench = fk.wrench(qa, tau_ext[:6], self._pub_sign)
                         except Exception:
                             ee_wrench = None
                 pub.publish(side, ts, pos, vel, eff,

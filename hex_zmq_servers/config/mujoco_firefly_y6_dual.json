@@ -6,7 +6,10 @@
         "deque_maxlen": 10,
         "client_timeout_ms": 200,
         "server_timeout_ms": 1000,
-        "server_num_workers": 4
+        "server_num_workers": 4,
+        "_comment_gravity_vec": "Per-side gravity (m/s^2) in each arm's BASE frame for the EEPoseFK tau_ext/wrench estimator — set by the launcher from site.yaml base_rpy_deg on a tilted-mount machine. null = flat [0,0,-9.81]. MUST exist here (null) or the launcher override is dropped by dict_update's schema filter.",
+        "gravity_vec_left": null,
+        "gravity_vec_right": null
     },
     "params": {
         "states_rate": 1000,
@@ -34,6 +37,9 @@
         "headless": false,
         "sens_ts": true,
         "scene_name": "scene_dual",
+        "_comment_base_rpy": "Mount orientation overrides [roll,pitch,yaw] deg (scene_machine only) — set by the launcher from site.yaml arms.<side>.base_rpy_deg so the sim matches the as-built machine, not the CAD nominal. null = keep the scene's values. MUST exist here (null) or the launcher override is dropped by dict_update's schema filter.",
+        "base_rpy_deg_left": null,
+        "base_rpy_deg_right": null,
         "_comment_gravity_comp": "Mirror the real arm cfg so torque/impedance behave identically in sim (faithful pre-flight test). gravity_comp adds tau_g(q) from the gr100 URDF via the shared MitArmSafety; scale 1.0 = accurate (do NOT use >1 — unsafe at zero stiffness).",
         "gravity_comp": true,
         "gravity_comp_scale": 0.8,

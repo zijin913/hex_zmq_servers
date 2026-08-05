@@ -22,14 +22,21 @@ _URDF = Path(__file__).resolve().parent / "hexarm" / "urdf" / "firefly_y6" / "gr
 
 
 class EEPoseFK:
-    """Tiny FK evaluator: 6 arm joints -> [x,y,z,qx,qy,qz,qw] in the arm base frame."""
+    """Tiny FK evaluator: 6 arm joints -> [x,y,z,qx,qy,qz,qw] in the arm base frame.
 
-    def __init__(self, frame: str = "link_6", urdf_path=None):
+    ``gravity`` is the gravity acceleration IN THIS ARM'S BASE frame (m/s²) —
+    it must match the arm server's own ``gravity_vec`` (rendered from site.yaml
+    ``base_rpy_deg``), or the ``tau_ext``/``wrench`` estimates are biased. None
+    keeps the flat-mount default. FK itself (.compute) is gravity-independent.
+    """
+
+    def __init__(self, frame: str = "link_6", urdf_path=None, gravity=None):
         import pinocchio as pin  # lazy: only when a pub actually wants .ee
         self._pin = pin
         self._model = pin.buildModelFromUrdf(str(urdf_path or _URDF))
         self._data = self._model.createData()
-        self._model.gravity.linear = np.array([0.0, 0.0, -9.81])  # match the real gravity model
+        self._model.gravity.linear = np.asarray(
+            [0.0, 0.0, -9.81] if gravity is None else gravity, dtype=np.float64)
         self._fid = self._model.getFrameId(frame)
         if self._fid >= self._model.nframes:
             raise ValueError(f"frame {frame!r} not in {_URDF.name}")

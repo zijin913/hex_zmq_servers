@@ -32,10 +32,15 @@ def hex_err(message):
 
 
 def dict_update(dict_raw: dict, dict_new: dict, add_new: bool = False):
+    """Recursive dict merge. add_new=False makes dict_raw a SCHEMA: keys absent
+    from it are SILENTLY DROPPED — a launcher cfg override only reaches the
+    server if the default json already carries the key (use null placeholders
+    for optional keys). The recursion propagates add_new (it used to hardcode
+    False, silently dropping nested keys even with add_new=True)."""
     for key, value in dict_new.items():
         if key in dict_raw:
             if isinstance(dict_raw[key], dict) and isinstance(value, dict):
-                dict_update(dict_raw[key], value)
+                dict_update(dict_raw[key], value, add_new)
             else:
                 dict_raw[key] = value
         elif add_new:
