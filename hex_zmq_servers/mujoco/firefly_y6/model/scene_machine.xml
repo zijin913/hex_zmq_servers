@@ -1,13 +1,23 @@
 <mujoco model="firefly_y6 full-machine scene">
     <!-- ============================================================================
-         FULL-MACHINE scene: two firefly_y6 arms on the xpkg_urdf_lift column,
+         FULL-MACHINE scene: two firefly_y6 arms on the hardware/xpkg_urdf_lift column,
          bases tilted 45 deg OUTWARD (the machine chassis mount).
 
-         Geometry provenance — measured from xpkg_urdf_lift/meshes/link_2.STL
-         (mount-plane normal clustering, tools in repo scratchpad):
-           * mount plane centers (link_2 frame, lift RETRACTED): (-0.0225, ±0.1205, 0.4670)
-           * mount plane normals: (0, ±0.7071, +0.7071)  ->  EXACTLY ±45.000 deg roll
-         The lift URDF itself carries no rpy anywhere — the tilt lives in the mesh.
+         Geometry provenance — measured from the CAD meshes (normal/face
+         clustering, tools in repo scratchpad):
+           * arm mount plane centers (lift link_2 frame, lift RETRACTED):
+             (-0.0225, ±0.1205, 0.4670); normals (0, ±0.7071, +0.7071)
+             -> EXACTLY ±45.000 deg roll. The lift URDF itself carries no rpy
+             anywhere — the tilt lives in the mesh.
+           * echo_plus chassis (world origin = chassis base_link, wheels
+             touch the floor at z=0): top plate z=0.138; the lift base's
+             495 cm² mounting underside (its own z=-0.059) seats on that
+             plate, and fitting the underside footprint inside the plate
+             pins the column at chassis x≈+0.127 -> lift origin
+             (0.127, 0, 0.197), arm mounts (0.1045, ±0.1205, 0.6640).
+             Chassis->lift seating OPERATOR-CONFIRMED on the machine
+             2026-08-06 (floor -> mount-plane-center ≈ 0.664 m, lift
+             retracted; column x offset and battery placement verified).
 
          The ±45 deg on the two *_arm_mount bodies below is the CAD NOMINAL and only
          a DEFAULT: at load the sim device overwrites these quats from its config
@@ -18,10 +28,12 @@
          NOMINAL-until-machine-assembly (revisit when the real machine exists):
            * lift height: RETRACTED (joint travel 2 x 0.336 m not modeled; the arm
              servers do not control the lift). Mount z rises with extension.
-           * table + objects: kept at the bench-scene world positions so keyframe /
-             qpos maps / object names stay IDENTICAL to scene_dual (the device's
-             hardcoded indices depend on this structure). Reposition to the real
-             machine workstation once its layout is known.
+           * table + objects: bench-scene cluster shifted +0.15 m in X so the
+             table's near edge (x=0.269) clears the chassis front (x=0.233) and
+             the lift column face (x=0.158) — same keyframe/qpos STRUCTURE as
+             scene_dual (the device's hardcoded indices depend on it), only the
+             object x values moved. Reposition to the real machine workstation
+             once its layout is known.
            * side camera: NOMINAL viewpoint copied from the bench scene — NOT
              calibration-locked (no machine hand-eye calibration exists yet).
              After machine calibration, extend tools/sync_sim_cameras_from_calib.py
@@ -36,7 +48,7 @@
     <option integrator="implicitfast"/>
     <option timestep="1e-3"/>
 
-    <statistic center="0.3 0 0.5" extent="1.2" meansize="0.05"/>
+    <statistic center="0.3 0 0.55" extent="1.4" meansize="0.05"/>
 
     <visual>
         <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0"/>
@@ -50,21 +62,83 @@
         <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
         <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
         <include file="assets/assets.xml"/>
-        <!-- Lift column (xpkg_urdf_lift). Declared here, not in assets/assets.xml:
-             the bench scenes must not pay for machine-only assets. -->
+        <!-- Lift column (hardware/xpkg_urdf_lift) + echo_plus chassis. Declared here,
+             not in assets/assets.xml: the bench scenes must not pay for
+             machine-only assets. Chassis casters (4x 1.8 MB STLs, underbody,
+             invisible from any working view) are deliberately not shipped. -->
         <mesh name="lift_base_link" file="assets/lift_base_link.STL"/>
         <mesh name="lift_link_1" file="assets/lift_link_1.STL"/>
         <mesh name="lift_link_2" file="assets/lift_link_2.STL"/>
+        <mesh name="chassis_base" file="assets/chassis_base.STL"/>
+        <mesh name="chassis_up" file="assets/chassis_up.STL"/>
+        <mesh name="chassis_frontback" file="assets/chassis_frontback.STL"/>
+        <mesh name="chassis_plus" file="assets/chassis_plus.STL"/>
+        <mesh name="chassis_print" file="assets/chassis_print.STL"/>
+        <mesh name="chassis_parts" file="assets/chassis_parts.STL"/>
+        <mesh name="chassis_logo" file="assets/chassis_logo.STL"/>
+        <mesh name="chassis_lw" file="assets/chassis_lw.STL"/>
+        <mesh name="chassis_rw" file="assets/chassis_rw.STL"/>
     </asset>
 
     <worldbody>
         <light pos="0.0 0.0 1.8" directional="true"/>
         <geom name="floor" size="0.0 0.0 0.05" type="plane" material="groundplane"/>
 
-        <!-- Lift column at the world origin, RETRACTED (all three link frames
-             coincide at qpos 0 — both prismatic joint origins are identity).
+        <!-- echo_plus chassis at the world origin (base_link frame: wheels
+             touch the floor at z=0). Static decoration + drive wheels at
+             their URDF joint offsets; the sim does not drive the base.
              Visual-only: see header. -->
-        <body name="lift_column" pos="0 0 0">
+        <body name="chassis" pos="0 0 0">
+            <geom name="chassis_body" type="mesh" mesh="chassis_base"
+                  rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_top_plate" type="mesh" mesh="chassis_up"
+                  rgba="0.2 0.2 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_frontback" type="mesh" mesh="chassis_frontback"
+                  rgba="0.8 0.8 0.78 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_plus" type="mesh" mesh="chassis_plus"
+                  rgba="0.86 0.08 0.23 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_print" type="mesh" mesh="chassis_print"
+                  rgba="0 0.5 1 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_parts" type="mesh" mesh="chassis_parts"
+                  rgba="0.2 0.2 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_logo" type="mesh" mesh="chassis_logo"
+                  rgba="0.2 0.2 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_wheel_l" type="mesh" mesh="chassis_lw" pos="0 0.13379 0.065"
+                  rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+            <geom name="chassis_wheel_r" type="mesh" mesh="chassis_rw" pos="0 -0.13379 0.065"
+                  rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+        </body>
+
+        <!-- Onboard battery: Anker SOLIX C2000 Gen 2 (459x250x257 mm, 18.9 kg,
+             LFP 2048 Wh — spec box, no published CAD; full model in
+             hardware/xpkg_urdf_battery/). Rides CROSSWISE (long axis along Y) in a
+             fitted rear basket. The lift-base CAD only carries a shallow
+             346x211 mm tray with a 45 mm lip — far smaller than the battery —
+             while the REAL machine's basket takes it exactly (operator-
+             confirmed). So the basket below is DERIVED nominal: interior =
+             battery + 2 mm clearance, 6 mm walls, 150 mm wall height,
+             floor on the tray floor (z=0.238) — operator-confirmed
+             2026-08-06. Battery top at z=0.495. -->
+        <geom name="battery" type="box" size="0.125 0.2295 0.1285"
+              pos="-0.0865 0 0.3665" rgba="0.15 0.15 0.16 1"
+              contype="0" conaffinity="0"/>
+        <body name="battery_basket" pos="-0.0865 0 0">
+            <geom name="basket_floor" type="box" size="0.133 0.2375 0.003"
+                  pos="0 0 0.235" rgba="0.45 0.45 0.47 1" contype="0" conaffinity="0"/>
+            <geom name="basket_wall_front" type="box" size="0.003 0.2375 0.075"
+                  pos="0.130 0 0.313" rgba="0.45 0.45 0.47 1" contype="0" conaffinity="0"/>
+            <geom name="basket_wall_back" type="box" size="0.003 0.2375 0.075"
+                  pos="-0.130 0 0.313" rgba="0.45 0.45 0.47 1" contype="0" conaffinity="0"/>
+            <geom name="basket_wall_left" type="box" size="0.133 0.003 0.075"
+                  pos="0 0.2345 0.313" rgba="0.45 0.45 0.47 1" contype="0" conaffinity="0"/>
+            <geom name="basket_wall_right" type="box" size="0.133 0.003 0.075"
+                  pos="0 -0.2345 0.313" rgba="0.45 0.45 0.47 1" contype="0" conaffinity="0"/>
+        </body>
+
+        <!-- Lift column seated on the chassis top plate (CAD-inferred nominal,
+             see header), RETRACTED (all three link frames coincide at qpos 0 —
+             both prismatic joint origins are identity). -->
+        <body name="lift_column" pos="0.127 0 0.197">
             <geom name="lift_base" type="mesh" mesh="lift_base_link"
                   rgba="0.79 0.82 0.93 1" contype="0" conaffinity="0"/>
             <geom name="lift_stage_1" type="mesh" mesh="lift_link_1"
@@ -75,22 +149,24 @@
 
         <!-- Left arm on the +Y mount plate: base +Z leans outward toward +Y.
              euler is RADIANS (compiler angle="radian"): -0.7853981634 = Rx(-45 deg).
-             Overridden at load from site.yaml via base_rpy_deg_left. -->
-        <body name="left_arm_mount" pos="-0.0225 0.1205 0.4670" euler="-0.7853981634 0 0">
+             Overridden at load from site.yaml via base_rpy_deg_left.
+             pos = lift origin (0.127,0,0.197) + mount center in lift frame
+             (-0.0225, ±0.1205, 0.4670) — keep in sync with site.yaml base_xyz. -->
+        <body name="left_arm_mount" pos="0.1045 0.1205 0.6640" euler="-0.7853981634 0 0">
             <include file="robot_left.xml"/>
         </body>
 
         <!-- Right arm on the -Y mount plate: base +Z leans outward toward -Y. -->
-        <body name="right_arm_mount" pos="-0.0225 -0.1205 0.4670" euler="0.7853981634 0 0">
+        <body name="right_arm_mount" pos="0.1045 -0.1205 0.6640" euler="0.7853981634 0 0">
             <include file="robot_right.xml"/>
         </body>
 
         <!-- Table + objects: bench-scene positions, kept verbatim (see header). -->
-        <body name="table" pos="0.5 0.0 0.3" quat="0.707107 0 0 0.707107">
+        <body name="table" pos="0.65 0.0 0.3" quat="0.707107 0 0 0.707107">
             <geom mesh="table_link" pos="0 0 0" type="mesh" name="table" rgba="0.2 0.2 0.2 1"/>
         </body>
 
-        <body name="mug" pos="0.50 0.10 0.47">
+        <body name="mug" pos="0.65 0.10 0.47">
             <joint name="mug_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.040" mass="0.12" diaginertia="0.00005 0.00005 0.00004"/>
             <geom type="mesh" mesh="scanned_mug_visual" material="scanned_mug_mat"
@@ -100,7 +176,7 @@
                   group="3" rgba="0 0 0 0" name="mug_collision"/>
         </body>
 
-        <body name="apple" pos="0.46 -0.10 0.5">
+        <body name="apple" pos="0.61 -0.10 0.5">
             <joint name="apple_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002"/>
             <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.028" type="sphere" name="apple_body" rgba="0.86 0.08 0.10 1"/>
@@ -108,7 +184,7 @@
             <geom contype="0" conaffinity="0" pos="0.01 0.0 0.035" euler="0 0.5 0" size="0.004 0.009" type="capsule" name="apple_leaf" rgba="0.12 0.62 0.20 1"/>
         </body>
 
-        <body name="block" pos="0.52 0.0 0.47">
+        <body name="block" pos="0.67 0.0 0.47">
             <joint name="block_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.015" mass="0.02" diaginertia="0.00001 0.00001 0.00001"/>
             <geom type="mesh" mesh="scanned_block_visual" material="scanned_block_mat"
@@ -118,7 +194,7 @@
                   group="3" rgba="0 0 0 0" name="block_collision"/>
         </body>
 
-        <body name="dog" pos="0.46 0.0 0.47">
+        <body name="dog" pos="0.61 0.0 0.47">
             <joint name="dog_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.025" mass="0.03" diaginertia="0.00002 0.00002 0.00002"/>
             <geom type="mesh" mesh="scanned_dog_visual" material="scanned_dog_mat"
@@ -128,7 +204,7 @@
                   group="3" rgba="0 0 0 0" name="dog_collision"/>
         </body>
 
-        <body name="kong" pos="0.56 0.10 0.47">
+        <body name="kong" pos="0.71 0.10 0.47">
             <joint name="kong_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.036" mass="0.04" diaginertia="0.00002 0.00002 0.00002"/>
             <geom type="mesh" mesh="scanned_kong_visual" material="scanned_kong_mat"
@@ -138,7 +214,7 @@
                   group="3" rgba="0 0 0 0" name="kong_collision"/>
         </body>
 
-        <body name="panda" pos="0.56 -0.10 0.47">
+        <body name="panda" pos="0.71 -0.10 0.47">
             <joint name="panda_joint" type="free" frictionloss="0.01"/>
             <inertial pos="0 0 0.038" mass="0.05" diaginertia="0.00003 0.00003 0.00003"/>
             <geom type="mesh" mesh="scanned_panda_visual" material="scanned_panda_mat"
@@ -148,7 +224,7 @@
                   group="3" rgba="0 0 0 0" name="panda_collision"/>
         </body>
 
-        <geom name="tar_plane" pos="0.6 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
+        <geom name="tar_plane" pos="0.75 0.0 0.301" type="box" size="0.04 0.04 0.001" rgba="0 1 0 1"/>
 
         <!-- Side camera: NOMINAL viewpoint (bench-scene values, table unchanged) —
              NOT calibration-locked. See header before trusting sim point-cloud
@@ -167,12 +243,12 @@
         <key name="home" qpos="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
         0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
-        0.50  0.10 0.47 0.0 0.0 0.0 1.0
-        0.46 -0.10 0.5  0.0 0.0 0.0 1.0
-        0.52  0.00 0.47 0.0 0.0 0.0 1.0
-        0.46  0.00 0.47 0.0 0.0 0.0 1.0
-        0.56  0.10 0.47 0.0 0.0 0.0 1.0
-        0.56 -0.10 0.47 0.0 0.0 0.0 1.0" ctrl="
+        0.65  0.10 0.47 0.0 0.0 0.0 1.0
+        0.61 -0.10 0.5  0.0 0.0 0.0 1.0
+        0.67  0.00 0.47 0.0 0.0 0.0 1.0
+        0.61  0.00 0.47 0.0 0.0 0.0 1.0
+        0.71  0.10 0.47 0.0 0.0 0.0 1.0
+        0.71 -0.10 0.47 0.0 0.0 0.0 1.0" ctrl="
         0.0 0.0 0.0 0.0 0.0 0.0 0.0
         0.0 0.0 0.0 0.0 0.0 0.0 0.0"/>
     </keyframe>
