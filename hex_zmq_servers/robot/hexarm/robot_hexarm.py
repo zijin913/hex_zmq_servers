@@ -545,10 +545,26 @@ class HexRobotHexarm(HexRobotBase):
                                 "compliant safe-hold (gripper stays clamped)")
                 elif last_cmds is not None:
                     hold = last_cmds
+                elif hold_pos is not None:
+                    # No client command yet this session (fresh grant). The old
+                    # raw-position latch never fed the firmware API watchdog,
+                    # so the arm park-cycled (PscApiCommunicationTimeout) at
+                    # ~1 Hz until the first real command — audible
+                    # enable/release chatter on every motor. Feed a proper
+                    # compliant safe-hold of the measured pose instead.
+                    hold = build_safe_hold_cmd(
+                        hold_pos,
+                        self.__motor_idx["robot_arm"],
+                        self.__motor_idx.get("robot_gripper"),
+                        self.__idle_safe_kp, self.__idle_safe_kd,
+                        self.__idle_safe_grip_kp, self.__idle_safe_grip_kd)
+                    if not self.__idle_safe_active:
+                        self.__idle_safe_active = True
+                        hex_log(HEX_LOG_LEVEL["info"],
+                                "[hexarm] no client command yet -> compliant "
+                                "boot safe-hold (API watchdog fed)")
                 else:
-                    if idle_target is None and hold_pos is not None:
-                        idle_target = hold_pos.copy()   # latch once
-                    hold = idle_target
+                    hold = None
                 if hold is not None:
                     try:
                         _tw = _time.perf_counter_ns() if _prof_on else 0
