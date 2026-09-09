@@ -56,6 +56,11 @@ class HexCamRealsenseServer(HexCamServerBase):
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):
         if recv_hdr["cmd"] == "is_working":
             return self.no_ts_hdr(recv_hdr, self._device.is_working()), None
+        elif recv_hdr["cmd"] == "get_sensor_health":
+            return {
+                "cmd": "get_sensor_health_ok",
+                "args": self._device.sensor_health(),
+            }, None
         elif recv_hdr["cmd"] == "get_intri":
             intri = self._device.get_intri()
             return self.no_ts_hdr(recv_hdr, intri is not None), intri

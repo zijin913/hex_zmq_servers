@@ -69,27 +69,35 @@ class HexRobotHexarmServer(HexRobotServerBase):
                                       net_config.get("realtime_mode", False))
 
     def _process_request(self, recv_hdr: dict, recv_buf: np.ndarray):
-        if recv_hdr["cmd"] == "is_working":
+        command = recv_hdr["cmd"]
+        if command in {
+            "seq_clear", "set_cmds", "set_control_mode", "clear_fault"
+        } and not self.mutation_authorized(recv_hdr):
+            # State/health remain observable while fullbody is down. Motion,
+            # mode changes and fault clears are capability-gated at the last
+            # software boundary before the real device.
+            return self.no_ts_hdr(recv_hdr, False), None
+        if command == "is_working":
             return self.no_ts_hdr(recv_hdr, self._device.is_working()), None
-        elif recv_hdr["cmd"] == "seq_clear":
+        elif command == "seq_clear":
             return self.no_ts_hdr(recv_hdr, self._seq_clear()), None
-        elif recv_hdr["cmd"] == "get_dofs":
+        elif command == "get_dofs":
             dofs = self._device.get_dofs()
             return self.no_ts_hdr(recv_hdr, dofs is not None), dofs
-        elif recv_hdr["cmd"] == "get_limits":
+        elif command == "get_limits":
             limits = self._device.get_limits()
             return self.no_ts_hdr(recv_hdr, limits is not None), limits
-        elif recv_hdr["cmd"] == "get_states":
+        elif command == "get_states":
             return self._get_states(recv_hdr)
-        elif recv_hdr["cmd"] == "set_cmds":
+        elif command == "set_cmds":
             return self._set_cmds(recv_hdr, recv_buf)
-        elif recv_hdr["cmd"] == "set_control_mode":
+        elif command == "set_control_mode":
             ok = self._device.set_control_mode(recv_hdr.get("args"))
             return self.no_ts_hdr(recv_hdr, ok), None
-        elif recv_hdr["cmd"] == "clear_fault":
+        elif command == "clear_fault":
             ok = self._device.clear_fault()
             return self.no_ts_hdr(recv_hdr, ok), None
-        elif recv_hdr["cmd"] == "get_fault":
+        elif command == "get_fault":
             fault = self._device.get_fault()
             return self.no_ts_hdr(recv_hdr, fault is not None), fault
         else:

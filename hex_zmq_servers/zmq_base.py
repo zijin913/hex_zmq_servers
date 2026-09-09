@@ -6,6 +6,7 @@
 # Date  : 2025-09-12
 ################################################################
 
+import hmac
 import os, signal, json, time
 import threading
 import zmq
@@ -68,6 +69,18 @@ class HexZMQClientBase(ABC):
         self._ip = ip
         self._port = port
         self._timeout_ms = client_timeout_ms
+        self._command_authority = None
+        authority_file = net_config.get("command_authority_file")
+        if authority_file:
+            try:
+                with open(authority_file, "r", encoding="ascii") as handle:
+                    candidate = handle.read().strip()
+                if candidate:
+                    self._command_authority = candidate
+            except OSError:
+                # State-only clients remain useful while fullbody is down. Any
+                # mutating RPC will be rejected by the real server.
+                pass
         self._socket = None
         self._lock = threading.Lock()
         # Stays False until the first successful exchange. Send/recv failures
@@ -145,6 +158,8 @@ class HexZMQClientBase(ABC):
             "dtype": str(req_buf.dtype),
             "shape": tuple(req_buf.shape),
         }
+        if self._command_authority is not None:
+            send_hdr["authority"] = self._command_authority
 
         try:
             self._socket.send_multipart(
@@ -213,6 +228,11 @@ class HexZMQServerBase(ABC):
             1,
             net_config.get("deque_maxlen", MAX_DEQUE_LEN),
         )
+        authority_file = net_config.get("command_authority_file")
+        self._command_authority_file = (
+            str(authority_file).format(uid=os.getuid())
+            if authority_file else None
+        )
         try:
             port = net_config["port"]
             ip = net_config["ip"]
@@ -239,6 +259,28 @@ class HexZMQServerBase(ABC):
 
         self._workers: list[threading.Thread] = []
         self._proxy_thread: threading.Thread | None = None
+
+    def mutation_authorized(self, recv_hdr: dict) -> bool:
+        """Validate a mutating RPC against the live fullbody capability.
+
+        No configured file preserves compatibility for simulation/examples.
+        A configured but missing/unreadable file is deliberately deny-all, so
+        stopping the guarded fullbody process revokes writes immediately.
+        """
+
+        if not self._command_authority_file:
+            return True
+        try:
+            with open(self._command_authority_file, "r", encoding="ascii") as handle:
+                expected = handle.read().strip()
+        except OSError:
+            return False
+        supplied = recv_hdr.get("authority")
+        return bool(
+            expected
+            and isinstance(supplied, str)
+            and hmac.compare_digest(supplied, expected)
+        )
 
     def __del__(self):
         self.close()

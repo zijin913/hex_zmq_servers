@@ -34,6 +34,14 @@ class HexCamRealsenseClient(HexCamClientBase):
         intri_hdr, intri = self.request({"cmd": "get_intri"})
         return intri_hdr, intri
 
+    def get_sensor_health(self):
+        """Return camera/video/IMU publisher health without draining samples."""
+
+        hdr, _ = self.request({"cmd": "get_sensor_health"})
+        if hdr is None or hdr.get("cmd") != "get_sensor_health_ok":
+            return None
+        return hdr.get("args")
+
     def get_imu(self):
         """Fetch and drain buffered IMU samples from the server.
 

@@ -8,6 +8,7 @@
 
 import fcntl
 import os
+import queue
 import threading
 import time
 import numpy as np
@@ -21,6 +22,7 @@ from ...zmq_base import (
     hex_zmq_ts_delta_ms,
 )
 from ...hex_launch import hex_log, HEX_LOG_LEVEL
+from ..imu_stream import ImuPublisher
 import pyrealsense2 as rs
 
 CAMERA_CONFIG = {
@@ -31,8 +33,15 @@ CAMERA_CONFIG = {
     "sens_ts": True,
     "enable_imu": False,   # D435i: gyro + accel multiplexed onto same pipeline
     "gyro_rate": 200,
-    "accel_rate": 250,
+    "accel_rate": 200,
     "imu_buffer_size": 2000,
+    # Dedicated IMU PUB.  It is owned by a worker in this camera process so
+    # video and motion data still share one USB/pipeline owner without sharing
+    # JPEG latency or a subscriber queue.
+    "imu_pub_port": None,
+    "imu_pub_hwm": 256,
+    "imu_pub_queue_size": 1024,
+    "imu_frame": "camera_imu",
     # Polling-path recovery.  A disconnected librealsense pipeline can turn
     # wait_for_frames() into an immediate exception; every retry below is
     # therefore paced and the whole in-process recovery has a hard deadline.
@@ -112,6 +121,14 @@ class HexCamRealsense(HexCamBase):
         self.__pipeline_started = False
         self.__closed_logged = False
         self.__state_pub = None
+        self.__imu_pub = None
+        self.__imu_pub_error = None
+        self.__jpeg_queue = queue.Queue(maxsize=1)
+        self.__jpeg_worker_stop = threading.Event()
+        self.__jpeg_thread = None
+        self.__jpeg_queue_drops = 0
+        self.__last_video_received_s = None
+        self.__last_motion_error_log_s = 0.0
         # Injectable in tests so recovery timing assertions never sleep on a
         # wall clock.  Frame receipt stamps intentionally keep time.monotonic.
         self.__recovery_clock = time.monotonic
@@ -124,8 +141,14 @@ class HexCamRealsense(HexCamBase):
             self.__sens_ts = camera_config.get("sens_ts", True)
             self.__enable_imu = bool(camera_config.get("enable_imu", False))
             self.__gyro_rate = int(camera_config.get("gyro_rate", 200))
-            self.__accel_rate = int(camera_config.get("accel_rate", 250))
+            self.__accel_rate = int(camera_config.get("accel_rate", 200))
             self.__imu_buffer_size = int(camera_config.get("imu_buffer_size", 2000))
+            self.__imu_pub_port = camera_config.get("imu_pub_port")
+            self.__imu_pub_hwm = int(camera_config.get("imu_pub_hwm", 256))
+            self.__imu_pub_queue_size = int(
+                camera_config.get("imu_pub_queue_size", 1024))
+            self.__imu_frame = str(
+                camera_config.get("imu_frame", "camera_imu"))
             self.__frame_timeout_ms = int(camera_config.get(
                 "frame_timeout_ms", CAMERA_CONFIG["frame_timeout_ms"]))
             self.__timeout_failures_before_recovery = max(1, int(
@@ -164,6 +187,11 @@ class HexCamRealsense(HexCamBase):
             raise ValueError("hardware_reset_cooldown_s must be >= 0")
         if self.__hardware_reset_settle_s < 1.0:
             raise ValueError("hardware_reset_settle_s must be >= 1 second")
+        if self.__imu_pub_port is not None and not (
+                1024 <= int(self.__imu_pub_port) <= 65535):
+            raise ValueError("imu_pub_port must be in [1024, 65535]")
+        if self.__imu_pub_hwm <= 0 or self.__imu_pub_queue_size <= 0:
+            raise ValueError("imu_pub_hwm and imu_pub_queue_size must be positive")
 
         # Optional high-rate image broadcast (zmq.PUB): cam/<topic_name>/image/compressed
         # (JPEG bgr8 + 16-byte [device_ts, host_ts] header) + throttled
@@ -271,6 +299,34 @@ class HexCamRealsense(HexCamBase):
             hex_log(HEX_LOG_LEVEL["info"],
                     f"HexCamRealsense IMU enabled in pipeline "
                     f"(gyro {self.__gyro_rate}Hz, accel {self.__accel_rate}Hz)")
+            if self.__imu_pub_port is not None:
+                try:
+                    self.__imu_pub = ImuPublisher(
+                        int(self.__imu_pub_port),
+                        source=self.__pub_topic,
+                        frame=self.__imu_frame,
+                        hwm=self.__imu_pub_hwm,
+                        queue_size=self.__imu_pub_queue_size,
+                    )
+                    hex_log(
+                        HEX_LOG_LEVEL["info"],
+                        f"HexCamRealsense IMU PUB on :{int(self.__imu_pub_port)} "
+                        f"(imu/{self.__pub_topic}/{{gyro,accel}})",
+                    )
+                except Exception as exc:
+                    self.__imu_pub_error = f"{type(exc).__name__}:{exc}"
+                    hex_log(
+                        HEX_LOG_LEVEL["warn"],
+                        f"HexCamRealsense IMU PUB disabled: {exc}",
+                    )
+
+        if self.__state_pub is not None:
+            self.__jpeg_thread = threading.Thread(
+                target=self.__jpeg_worker,
+                name=f"realsense-jpeg-{self.__pub_topic}",
+                daemon=True,
+            )
+            self.__jpeg_thread.start()
 
         # start work loop
         self._working.set()
@@ -434,6 +490,32 @@ class HexCamRealsense(HexCamBase):
     def imu_enabled(self) -> bool:
         return self.__imu_active
 
+    def sensor_health(self) -> dict:
+        """Return video/IMU freshness and fan-out counters for diagnostics."""
+
+        now = time.monotonic()
+        last_video = self.__last_video_received_s
+        imu_pub = self.__imu_pub
+        return {
+            "serial_number": self.__serial_number,
+            "working": self.is_working(),
+            "video": {
+                "streaming": self.__streaming.is_set(),
+                "last_frame_age_ms": (
+                    None if last_video is None
+                    else round(max(0.0, now - last_video) * 1000.0, 1)
+                ),
+                "jpeg_queue_drops": self.__jpeg_queue_drops,
+            },
+            "imu": {
+                "enabled": self.__imu_active,
+                "gyro_rate_hz": self.__gyro_rate,
+                "accel_rate_hz": self.__accel_rate,
+                "publisher_error": self.__imu_pub_error,
+                "publisher": None if imu_pub is None else imu_pub.health(),
+            },
+        }
+
     def drain_imu(self):
         """Pop and return all buffered IMU samples.
 
@@ -464,6 +546,8 @@ class HexCamRealsense(HexCamBase):
         try:
             stream_type = motion_frame.get_profile().stream_type()
             sens_ts_ms = motion_frame.get_timestamp()
+            device_ts_ns = int(round(float(sens_ts_ms) * 1_000_000.0))
+            host_ts_ns = time.monotonic_ns()
             if self.__imu_bias_ns is None:
                 self.__imu_bias_ns = np.int64(hex_ns_now()) - np.int64(
                     sens_ts_ms * 1_000_000)
@@ -471,13 +555,56 @@ class HexCamRealsense(HexCamBase):
             data = motion_frame.get_motion_data()
             sample = (float(ts_ns), float(data.x),
                       float(data.y), float(data.z))
+            kind = None
             with self.__imu_lock:
                 if stream_type == rs.stream.gyro:
                     self.__gyro_buffer.append(sample)
+                    kind = "gyro"
                 elif stream_type == rs.stream.accel:
                     self.__accel_buffer.append(sample)
-        except Exception:
+                    kind = "accel"
+            if kind is not None and self.__imu_pub is not None:
+                self.__imu_pub.publish(
+                    kind,
+                    device_ts_ns,
+                    host_ts_ns,
+                    (float(data.x), float(data.y), float(data.z)),
+                )
+        except Exception as exc:
+            now = time.monotonic()
+            if now - self.__last_motion_error_log_s >= 5.0:
+                self.__last_motion_error_log_s = now
+                hex_log(HEX_LOG_LEVEL["warn"],
+                        f"HexCamRealsense motion ingest error: {exc}")
+
+    def __enqueue_jpg(self, ts, color_arr, host_ts=None):
+        """Replace the pending JPEG job; never wait in the SDK callback."""
+
+        if self.__state_pub is None or color_arr is None:
+            return
+        item = (ts, color_arr, host_ts)
+        try:
+            self.__jpeg_queue.put_nowait(item)
+            return
+        except queue.Full:
             pass
+        try:
+            self.__jpeg_queue.get_nowait()
+            self.__jpeg_queue_drops += 1
+        except queue.Empty:
+            pass
+        try:
+            self.__jpeg_queue.put_nowait(item)
+        except queue.Full:
+            self.__jpeg_queue_drops += 1
+
+    def __jpeg_worker(self):
+        while not self.__jpeg_worker_stop.is_set():
+            try:
+                ts, color_arr, host_ts = self.__jpeg_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            self.__pub_jpg(ts, color_arr, host_ts=host_ts)
 
     def __pub_jpg(self, ts, color_arr, host_ts=None):
         """Publish one frame on cam/<name>/image/compressed (+ throttled camera_info). Failures drop.
@@ -514,24 +641,77 @@ class HexCamRealsense(HexCamBase):
         except Exception:
             pass
 
+    def __emit_video_pair(self, color, depth, pair_ts_ms):
+        """Copy one synchronized pair into REQ/REP and asynchronous JPEG paths."""
+
+        with self.__cb_lock:
+            rgb_q = self.__cb_rgb_queue
+            depth_q = self.__cb_depth_queue
+            rgb_count = self.__cb_rgb_count
+            depth_count = self.__cb_depth_count
+            self.__cb_rgb_count = (self.__cb_rgb_count + 1) % self._max_seq_num
+            self.__cb_depth_count = (self.__cb_depth_count + 1) % self._max_seq_num
+
+        # Receipt stamp is taken before conversion/copy so it remains useful for
+        # synchronization even if downstream JPEG work is momentarily slow.
+        recv_host_ts = time.monotonic()
+        cur_ns = hex_zmq_ts_now()
+        try:
+            if self.__bias_ns is None:
+                self.__bias_ns = np.int64(hex_ns_now()) - np.int64(
+                    pair_ts_ms * 1_000_000)
+            sen_ts_ns = self.__bias_ns + np.int64(pair_ts_ms * 1_000_000)
+            sen_ts = {
+                "s": int(sen_ts_ns // 1_000_000_000),
+                "ns": int(sen_ts_ns % 1_000_000_000),
+            }
+            if hex_zmq_ts_delta_ms(cur_ns, sen_ts) < 0:
+                sen_ts = cur_ns
+        except Exception:
+            sen_ts = cur_ns
+        ts = sen_ts if self.__sens_ts else cur_ns
+
+        color_arr = np.asanyarray(color.get_data()).copy()
+        depth_arr = np.asanyarray(depth.get_data()).copy()
+        self.__last_video_received_s = recv_host_ts
+        self.__streaming.set()
+        if rgb_q is not None:
+            rgb_q.append(CamFrame(ts, rgb_count, color_arr, recv_host_ts))
+        self.__enqueue_jpg(ts, color_arr, host_ts=recv_host_ts)
+        if depth_q is not None:
+            depth_q.append(CamFrame(ts, depth_count, depth_arr, recv_host_ts))
+
     def __pipeline_callback(self, frame):
-        """Pipeline-level callback. Each invocation receives ONE frame."""
+        """Split librealsense motion, frameset, and individual-frame callbacks."""
         try:
             # Motion frame -> IMU buffer
             if frame.is_motion_frame():
                 self.__ingest_motion(frame.as_motion_frame())
                 return
 
+            # A mixed pipeline can deliver a composite frameset rather than
+            # individual color/depth frames.  Treating it as a video frame was
+            # the reason the old D435i callback path silently lost video.
+            if getattr(frame, "is_frameset", lambda: False)():
+                frameset = frame.as_frameset()
+                aligned = self.__align.process(frameset)
+                color = aligned.get_color_frame()
+                depth = aligned.get_depth_frame()
+                if color and depth:
+                    self.__emit_video_pair(
+                        color, depth, float(color.get_timestamp()))
+                return
+
             stream_type = frame.get_profile().stream_type()
-            ts_us = frame.get_timestamp()  # ms (float)
+            ts_ms = frame.get_timestamp()  # RealSense timestamps are ms (float)
 
             with self.__cb_lock:
                 if stream_type == rs.stream.color:
                     self.__last_color = frame
-                    self.__last_color_ts_us = ts_us
+                    self.__last_color_ts_us = ts_ms
                 elif stream_type == rs.stream.depth:
                     self.__last_depth = frame
-                    self.__last_depth_ts_us = ts_us
+                    self.__last_depth_ts_us = ts_ms
                 else:
                     return
 
@@ -545,50 +725,10 @@ class HexCamRealsense(HexCamBase):
                 color = self.__last_color
                 depth = self.__last_depth
                 pair_ts_us = self.__last_color_ts_us
-                rgb_q = self.__cb_rgb_queue
-                depth_q = self.__cb_depth_queue
-                rgb_count = self.__cb_rgb_count
-                depth_count = self.__cb_depth_count
-                self.__cb_rgb_count = (self.__cb_rgb_count + 1) % self._max_seq_num
-                self.__cb_depth_count = (self.__cb_depth_count + 1) % self._max_seq_num
                 # Reset to avoid re-emitting the same pair
                 self.__last_color = None
                 self.__last_depth = None
-
-            # RECEIPT stamp: this pair is now in-process. time.monotonic() to match
-            # the arm's host_ts clock; the PUB path publishes it verbatim (no queue
-            # on the camera PUB path, so this is essentially capture-to-publish).
-            _recv_host_ts = time.monotonic()
-
-            # Bias-correct the timestamp
-            cur_ns = hex_zmq_ts_now()
-            try:
-                if self.__bias_ns is None:
-                    self.__bias_ns = np.int64(hex_ns_now()) - np.int64(
-                        pair_ts_us * 1_000_000)
-                sen_ts_ns = self.__bias_ns + np.int64(pair_ts_us * 1_000_000)
-                sen_ts = {
-                    "s": int(sen_ts_ns // 1_000_000_000),
-                    "ns": int(sen_ts_ns % 1_000_000_000),
-                }
-                if hex_zmq_ts_delta_ms(cur_ns, sen_ts) < 0:
-                    sen_ts = cur_ns
-            except Exception:
-                sen_ts = cur_ns
-            ts = sen_ts if self.__sens_ts else cur_ns
-
-            color_arr = np.asanyarray(color.get_data()).copy()
-            depth_arr = np.asanyarray(depth.get_data()).copy()
-            self.__streaming.set()
-            # The SAME receipt stamp goes to both transports. The PUB path
-            # already carried it; the REQ/REP queue used to drop it, which left
-            # every soda_os-side consumer (teleop, policy, recording) unable to
-            # say when a frame was captured.
-            if rgb_q is not None:
-                rgb_q.append(CamFrame(ts, rgb_count, color_arr, _recv_host_ts))
-            self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
-            if depth_q is not None:
-                depth_q.append(CamFrame(ts, depth_count, depth_arr, _recv_host_ts))
+            self.__emit_video_pair(color, depth, pair_ts_us)
         except Exception as exc:
             hex_log(HEX_LOG_LEVEL["warn"],
                     f"HexCamRealsense callback error: {exc}")
@@ -604,9 +744,6 @@ class HexCamRealsense(HexCamBase):
 
         if self.__imu_active:
             # Callback-driven path (single pipeline with mixed video + IMU).
-            # NOTE: This path is currently unreliable on D435i + librealsense
-            # 2.x — video frames may not get delivered. Prefer enable_imu=false
-            # and capture IMU separately if needed.
             try:
                 self.__pipeline.start(self.__config, self.__pipeline_callback)
                 self.__pipeline_started = True
@@ -625,7 +762,25 @@ class HexCamRealsense(HexCamBase):
                     self.__run_video_loop(rgb_queue, depth_queue, stop_event)
             else:
                 self.__force_depth_units()
+                started_s = time.monotonic()
+                stale_after_s = (
+                    self.__frame_timeout_ms
+                    * self.__timeout_failures_before_recovery
+                    / 1000.0
+                )
                 while self._working.is_set() and not stop_event.is_set():
+                    last_video_s = self.__last_video_received_s
+                    reference_s = started_s if last_video_s is None else last_video_s
+                    if time.monotonic() - reference_s > stale_after_s:
+                        self.__streaming.clear()
+                        hex_log(
+                            HEX_LOG_LEVEL["err"],
+                            f"RealSense mixed video+IMU stream stale for "
+                            f">{stale_after_s:.1f}s serial={self.__serial_number}; "
+                            "exiting for supervisor restart",
+                        )
+                        self.close()
+                        raise SystemExit(3)
                     stop_event.wait(0.1)
         else:
             # Polling path: classic wait_for_frames + align.
@@ -791,6 +946,7 @@ class HexCamRealsense(HexCamBase):
             # RECEIPT stamp: wait_for_frames just returned this frame. time.monotonic()
             # to match the arm's host_ts clock; published verbatim by the PUB path.
             _recv_host_ts = time.monotonic()
+            self.__last_video_received_s = _recv_host_ts
             cur_ns = hex_zmq_ts_now()
             try:
                 sens_us = aligned.get_frame_metadata(
@@ -811,7 +967,7 @@ class HexCamRealsense(HexCamBase):
                 color_arr = np.asanyarray(color.get_data()).copy()
                 rgb_queue.append(CamFrame(ts, rgb_count, color_arr, _recv_host_ts))
                 rgb_count = (rgb_count + 1) % self._max_seq_num
-                self.__pub_jpg(ts, color_arr, host_ts=_recv_host_ts)
+                self.__enqueue_jpg(ts, color_arr, host_ts=_recv_host_ts)
             depth = aligned.get_depth_frame()
             if depth:
                 depth_queue.append(CamFrame(
@@ -823,6 +979,19 @@ class HexCamRealsense(HexCamBase):
         self._working.clear()
         self.__streaming.clear()
         self.__stop_pipeline()
+        jpeg_stop = getattr(self, "_HexCamRealsense__jpeg_worker_stop", None)
+        if jpeg_stop is not None:
+            jpeg_stop.set()
+        jpeg_thread = getattr(self, "_HexCamRealsense__jpeg_thread", None)
+        if jpeg_thread is not None and jpeg_thread is not threading.current_thread():
+            jpeg_thread.join(timeout=1.0)
+        imu_pub = getattr(self, "_HexCamRealsense__imu_pub", None)
+        self.__imu_pub = None
+        if imu_pub is not None:
+            try:
+                imu_pub.close()
+            except Exception:
+                pass
         state_pub = self.__state_pub
         self.__state_pub = None
         if state_pub is not None:
